@@ -6,11 +6,23 @@ const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY?.trim();
 export const requiredSupabaseEnvVars = ['VITE_SUPABASE_URL', 'VITE_SUPABASE_ANON_KEY'];
 export const isProductionBuild = import.meta.env.PROD;
 
+const isPlaceholderValue = (value) => /your-|placeholder|example/i.test(value ?? '');
+
+const isValidSupabaseUrl = (value) => {
+  try {
+    const url = new URL(value);
+    return ['http:', 'https:'].includes(url.protocol);
+  } catch {
+    return false;
+  }
+};
+
 export const isSupabaseConfigured =
   Boolean(supabaseUrl) &&
   Boolean(supabaseAnonKey) &&
-  !supabaseUrl.includes('your-project') &&
-  !supabaseAnonKey.includes('your-public');
+  isValidSupabaseUrl(supabaseUrl) &&
+  !isPlaceholderValue(supabaseUrl) &&
+  !isPlaceholderValue(supabaseAnonKey);
 
 export const isDemoMode = !isProductionBuild && !isSupabaseConfigured;
 export const hasSupabaseConfigurationError = isProductionBuild && !isSupabaseConfigured;

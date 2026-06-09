@@ -12,6 +12,7 @@ import { predictionService } from '../services/predictionService';
 import { profileService } from '../services/profileService';
 import { syncLogService } from '../services/syncLogService';
 import { formatDateTime } from '../utils/date';
+import { getSafeErrorMessage } from '../utils/errors';
 
 export function AdminDashboardPage() {
   const { isSupabaseConfigured } = useAuth();
@@ -37,7 +38,7 @@ export function AdminDashboardPage() {
       setStats(statRows);
       setLatestSyncLog(syncLog);
     } catch (error) {
-      toast.error(error.message ?? 'Could not load admin dashboard.');
+      toast.error(getSafeErrorMessage(error, 'Could not load admin dashboard.'));
     } finally {
       setLoading(false);
     }
@@ -60,7 +61,7 @@ export function AdminDashboardPage() {
       setSelectedMatch(null);
       await load();
     } catch (error) {
-      toast.error(error.message ?? 'Could not save match.');
+      toast.error(getSafeErrorMessage(error, 'Could not save match.'));
     } finally {
       setSaving(false);
     }
@@ -73,7 +74,7 @@ export function AdminDashboardPage() {
       setDeleteTarget(null);
       await load();
     } catch (error) {
-      toast.error(error.message ?? 'Could not delete match.');
+      toast.error(getSafeErrorMessage(error, 'Could not delete match.'));
     }
   };
 
@@ -83,7 +84,7 @@ export function AdminDashboardPage() {
       toast.success('Points recalculated from predictions.');
       await load();
     } catch (error) {
-      toast.error(error.message ?? 'Could not recalculate points.');
+      toast.error(getSafeErrorMessage(error, 'Could not recalculate points.'));
     }
   };
 
@@ -100,7 +101,7 @@ export function AdminDashboardPage() {
       }
       await load();
     } catch (error) {
-      toast.error(error.message ?? 'Could not sync fixtures.');
+      toast.error(getSafeErrorMessage(error, 'Could not sync fixtures.'));
     } finally {
       setSyncing(false);
     }
@@ -250,7 +251,11 @@ function SyncLogCard({ log }) {
             {log.fallback_used ? ' fallback' : ''}
           </h2>
           <p className="mt-1 text-sm text-slate-300">Finished {formatDateTime(log.finished_at)}</p>
-          {hasError ? <p className="mt-2 text-sm text-rose-200">{log.error_message ?? 'Sync completed with errors.'}</p> : null}
+          {hasError ? (
+            <p className="mt-2 text-sm text-rose-200">
+              {getSafeErrorMessage(log.error_message, 'Sync completed with errors.')}
+            </p>
+          ) : null}
         </div>
         <div className="grid grid-cols-2 gap-2 text-sm sm:grid-cols-4">
           <MiniMetric label="Inserted" value={log.inserted_count} />

@@ -8,6 +8,7 @@ import { useAuth } from '../context/AuthContext';
 import { profileService } from '../services/profileService';
 import { syncLogService } from '../services/syncLogService';
 import { formatDateTime } from '../utils/date';
+import { getSafeErrorMessage } from '../utils/errors';
 import { getAccuracy } from '../utils/predictions';
 
 export function ScoreboardPage() {
@@ -29,7 +30,7 @@ export function ScoreboardPage() {
         setPlayers(leaderboard);
         setLatestSync(syncLog);
       } catch (error) {
-        toast.error(error.message ?? 'Could not load scoreboard.');
+        toast.error(getSafeErrorMessage(error, 'Could not load scoreboard.'));
       } finally {
         setLoading(false);
       }

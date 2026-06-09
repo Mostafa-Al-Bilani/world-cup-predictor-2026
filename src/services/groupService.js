@@ -1,4 +1,5 @@
 import { getAccuracy } from '../utils/predictions';
+import { normalizeGroupInput, normalizeInviteCode, normalizeProfileSearchQuery, validateUuid } from '../utils/validation';
 import { isDemoMode, supabase } from './supabaseClient';
 import { localStore } from './localStore';
 
@@ -50,15 +51,24 @@ const readLocalGroups = (userId) => {
     .filter(Boolean);
 };
 
+const getCurrentUserId = async () => {
+  const { data, error } = await supabase.auth.getUser();
+  if (error || !data.user?.id) {
+    throw new Error('You must be logged in to use groups.');
+  }
+  return data.user.id;
+};
+
 export const groupService = {
   async getMyGroups(userId) {
     if (!userId) return [];
-    if (isDemoMode) return readLocalGroups(userId);
+    if (isDemoMode) return readLocalGroups(validateUuid(userId, 'User ID'));
 
+    const currentUserId = await getCurrentUserId();
     const { data, error } = await supabase
       .from('group_members')
       .select('role,status,created_at,groups(id,name,description,owner_id,invite_code,created_at,updated_at)')
-      .eq('user_id', userId)
+      .eq('user_id', currentUserId)
       .eq('status', 'accepted')
       .order('created_at', { ascending: false });
 
@@ -69,17 +79,19 @@ export const groupService = {
   async getPendingInvitations(userId) {
     if (!userId) return [];
     if (isDemoMode) {
+      const normalizedUserId = validateUuid(userId, 'User ID');
       const store = localStore.getStore();
       return store.groupInvitations
-        .filter((invite) => invite.invited_user_id === userId && invite.status === 'pending')
+        .filter((invite) => invite.invited_user_id === normalizedUserId && invite.status === 'pending')
         .map((invite) => ({ ...invite, group: store.groups.find((group) => group.id === invite.group_id) }))
         .filter((invite) => invite.group);
     }
 
+    const currentUserId = await getCurrentUserId();
     const { data, error } = await supabase
       .from('group_invitations')
       .select('id,group_id,invited_user_id,invited_by,status,created_at,updated_at,groups(id,name,description,owner_id,invite_code)')
-      .eq('invited_user_id', userId)
+      .eq('invited_user_id', currentUserId)
       .eq('status', 'pending')
       .order('created_at', { ascending: false });
 
@@ -88,13 +100,16 @@ export const groupService = {
   },
 
   async createGroup({ name, description, userId }) {
+    const normalizedInput = normalizeGroupInput({ name, description });
+
     if (isDemoMode) {
+      const normalizedUserId = validateUuid(userId, 'User ID');
       const store = localStore.getStore();
       const group = {
         id: crypto.randomUUID(),
-        name: name.trim(),
-        description: description?.trim() || null,
-        owner_id: userId,
+        name: normalizedInput.name,
+        description: normalizedInput.description,
+        owner_id: normalizedUserId,
         invite_code: createInviteCode(),
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
@@ -102,7 +117,7 @@ export const groupService = {
       const member = {
         id: crypto.randomUUID(),
         group_id: group.id,
-        user_id: userId,
+        user_id: normalizedUserId,
         role: 'owner',
         status: 'accepted',
         created_at: new Date().toISOString(),
@@ -113,23 +128,26 @@ export const groupService = {
     }
 
     const { data, error } = await supabase.rpc('create_private_group', {
-      group_name: name,
-      group_description: description || null,
+      group_name: normalizedInput.name,
+      group_description: normalizedInput.description,
     });
     if (error) throw error;
     return data;
   },
 
   async joinByCode({ code, userId }) {
+    const normalizedCode = normalizeInviteCode(code);
+
     if (isDemoMode) {
+      const normalizedUserId = validateUuid(userId, 'User ID');
       const store = localStore.getStore();
-      const group = store.groups.find((item) => item.invite_code?.toUpperCase() === code.trim().toUpperCase());
+      const group = store.groups.find((item) => item.invite_code?.toUpperCase() === normalizedCode);
       if (!group) throw new Error('Invalid invite code.');
-      if (!store.groupMembers.some((member) => member.group_id === group.id && member.user_id === userId)) {
+      if (!store.groupMembers.some((member) => member.group_id === group.id && member.user_id === normalizedUserId)) {
         store.groupMembers.unshift({
           id: crypto.randomUUID(),
           group_id: group.id,
-          user_id: userId,
+          user_id: normalizedUserId,
           role: 'member',
           status: 'accepted',
           created_at: new Date().toISOString(),
@@ -140,23 +158,34 @@ export const groupService = {
       return group;
     }
 
-    const { data, error } = await supabase.rpc('join_group_by_invite_code', { target_invite_code: code });
+    const { data, error } = await supabase.rpc('join_group_by_invite_code', { target_invite_code: normalizedCode });
     if (error) throw error;
     return data;
   },
 
   async respondInvitation({ invitationId, status, userId }) {
+    const normalizedInvitationId = validateUuid(invitationId, 'Invitation ID');
+    if (!['accepted', 'declined'].includes(status)) {
+      throw new Error('Invitation response is invalid.');
+    }
+
     if (isDemoMode) {
+      const normalizedUserId = validateUuid(userId, 'User ID');
       const store = localStore.getStore();
-      const invitation = store.groupInvitations.find((item) => item.id === invitationId && item.invited_user_id === userId);
+      const invitation = store.groupInvitations.find(
+        (item) => item.id === normalizedInvitationId && item.invited_user_id === normalizedUserId,
+      );
       if (!invitation) throw new Error('Invitation not found.');
       invitation.status = status;
       invitation.updated_at = new Date().toISOString();
-      if (status === 'accepted' && !store.groupMembers.some((item) => item.group_id === invitation.group_id && item.user_id === userId)) {
+      if (
+        status === 'accepted' &&
+        !store.groupMembers.some((item) => item.group_id === invitation.group_id && item.user_id === normalizedUserId)
+      ) {
         store.groupMembers.push({
           id: crypto.randomUUID(),
           group_id: invitation.group_id,
-          user_id: userId,
+          user_id: normalizedUserId,
           role: 'member',
           status: 'accepted',
           created_at: new Date().toISOString(),
@@ -168,7 +197,7 @@ export const groupService = {
     }
 
     const { data, error } = await supabase.rpc('respond_group_invitation', {
-      target_invitation_id: invitationId,
+      target_invitation_id: normalizedInvitationId,
       response_status: status,
     });
     if (error) throw error;
@@ -176,27 +205,29 @@ export const groupService = {
   },
 
   async getGroup(groupId) {
+    const normalizedGroupId = validateUuid(groupId, 'Group ID');
     if (isDemoMode) {
       const store = localStore.getStore();
-      return store.groups.find((group) => group.id === groupId) ?? null;
+      return store.groups.find((group) => group.id === normalizedGroupId) ?? null;
     }
 
-    const { data, error } = await supabase.from('groups').select('*').eq('id', groupId).maybeSingle();
+    const { data, error } = await supabase.from('groups').select('*').eq('id', normalizedGroupId).maybeSingle();
     if (error) throw error;
     return data;
   },
 
   async getGroupMembers(groupId) {
+    const normalizedGroupId = validateUuid(groupId, 'Group ID');
     if (isDemoMode) {
       const store = localStore.getStore();
-      const members = store.groupMembers.filter((member) => member.group_id === groupId && member.status === 'accepted');
+      const members = store.groupMembers.filter((member) => member.group_id === normalizedGroupId && member.status === 'accepted');
       return attachProfilesToMembers(members, store.profiles);
     }
 
     const { data: members, error } = await supabase
       .from('group_members')
       .select('id,group_id,user_id,role,status,created_at,updated_at')
-      .eq('group_id', groupId)
+      .eq('group_id', normalizedGroupId)
       .eq('status', 'accepted')
       .order('created_at', { ascending: true });
 
@@ -219,10 +250,11 @@ export const groupService = {
   },
 
   async getGroupInvitations(groupId) {
+    const normalizedGroupId = validateUuid(groupId, 'Group ID');
     if (isDemoMode) {
       const store = localStore.getStore();
       return store.groupInvitations
-        .filter((invite) => invite.group_id === groupId && invite.status === 'pending')
+        .filter((invite) => invite.group_id === normalizedGroupId && invite.status === 'pending')
         .map((invite) => ({
           ...invite,
           invited_profile: store.profiles.find((profile) => profile.id === invite.invited_user_id),
@@ -232,7 +264,7 @@ export const groupService = {
     const { data: invites, error } = await supabase
       .from('group_invitations')
       .select('id,group_id,invited_user_id,invited_by,status,created_at,updated_at')
-      .eq('group_id', groupId)
+      .eq('group_id', normalizedGroupId)
       .eq('status', 'pending')
       .order('created_at', { ascending: false });
 
@@ -252,126 +284,152 @@ export const groupService = {
     }));
   },
 
-  async searchProfiles(query) {
+  async searchProfiles(query, groupId) {
+    const normalizedQuery = normalizeProfileSearchQuery(query);
+
     if (isDemoMode) {
-      const normalized = query.trim().toLowerCase();
-      if (normalized.length < 2) return [];
+      const normalized = normalizedQuery.toLowerCase();
       const store = localStore.getStore();
       return store.profiles
         .filter((profile) => profile.username.toLowerCase().includes(normalized) || profile.email.toLowerCase().includes(normalized))
         .slice(0, 10);
     }
 
-    const { data, error } = await supabase.rpc('search_profiles_for_invite', { search_text: query });
+    const normalizedGroupId = validateUuid(groupId, 'Group ID');
+    const { data, error } = await supabase.rpc('search_profiles_for_invite', {
+      target_group_id: normalizedGroupId,
+      search_text: normalizedQuery,
+    });
     if (error) throw error;
     return data ?? [];
   },
 
   async inviteMember({ groupId, userId, invitedBy }) {
+    const normalizedGroupId = validateUuid(groupId, 'Group ID');
+    const normalizedUserId = validateUuid(userId, 'User ID');
+
     if (isDemoMode) {
+      const normalizedInviterId = validateUuid(invitedBy, 'Inviter ID');
       const store = localStore.getStore();
       const invitation = {
         id: crypto.randomUUID(),
-        group_id: groupId,
-        invited_user_id: userId,
-        invited_by: invitedBy,
+        group_id: normalizedGroupId,
+        invited_user_id: normalizedUserId,
+        invited_by: normalizedInviterId,
         status: 'pending',
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       };
       const invitations = store.groupInvitations.filter(
-        (item) => !(item.group_id === groupId && item.invited_user_id === userId),
+        (item) => !(item.group_id === normalizedGroupId && item.invited_user_id === normalizedUserId),
       );
       localStore.setStore({ ...store, groupInvitations: [invitation, ...invitations] });
       return invitation;
     }
 
     const { data, error } = await supabase.rpc('invite_group_member', {
-      target_group_id: groupId,
-      target_user_id: userId,
+      target_group_id: normalizedGroupId,
+      target_user_id: normalizedUserId,
     });
     if (error) throw error;
     return data;
   },
 
   async updateGroup({ groupId, name, description }) {
+    const normalizedGroupId = validateUuid(groupId, 'Group ID');
+    const normalizedInput = normalizeGroupInput({ name, description });
+
     if (isDemoMode) {
       const store = localStore.getStore();
       const groups = store.groups.map((group) =>
-        group.id === groupId ? { ...group, name, description: description || null, updated_at: new Date().toISOString() } : group,
+        group.id === normalizedGroupId
+          ? { ...group, name: normalizedInput.name, description: normalizedInput.description, updated_at: new Date().toISOString() }
+          : group,
       );
       localStore.setStore({ ...store, groups });
-      return groups.find((group) => group.id === groupId);
+      return groups.find((group) => group.id === normalizedGroupId);
     }
 
     const { data, error } = await supabase.rpc('update_group_details', {
-      target_group_id: groupId,
-      group_name: name,
-      group_description: description || null,
+      target_group_id: normalizedGroupId,
+      group_name: normalizedInput.name,
+      group_description: normalizedInput.description,
     });
     if (error) throw error;
     return data;
   },
 
   async regenerateInviteCode(groupId) {
+    const normalizedGroupId = validateUuid(groupId, 'Group ID');
     if (isDemoMode) {
       const store = localStore.getStore();
       const groups = store.groups.map((group) =>
-        group.id === groupId ? { ...group, invite_code: createInviteCode(), updated_at: new Date().toISOString() } : group,
+        group.id === normalizedGroupId ? { ...group, invite_code: createInviteCode(), updated_at: new Date().toISOString() } : group,
       );
       localStore.setStore({ ...store, groups });
-      return groups.find((group) => group.id === groupId);
+      return groups.find((group) => group.id === normalizedGroupId);
     }
 
-    const { data, error } = await supabase.rpc('regenerate_group_invite_code', { target_group_id: groupId });
+    const { data, error } = await supabase.rpc('regenerate_group_invite_code', { target_group_id: normalizedGroupId });
     if (error) throw error;
     return data;
   },
 
   async removeMember({ groupId, userId }) {
+    const normalizedGroupId = validateUuid(groupId, 'Group ID');
+    const normalizedUserId = validateUuid(userId, 'User ID');
+
     if (isDemoMode) {
       const store = localStore.getStore();
       localStore.setStore({
         ...store,
-        groupMembers: store.groupMembers.filter((member) => !(member.group_id === groupId && member.user_id === userId)),
+        groupMembers: store.groupMembers.filter(
+          (member) => !(member.group_id === normalizedGroupId && member.user_id === normalizedUserId),
+        ),
       });
       return;
     }
 
     const { error } = await supabase.rpc('remove_group_member', {
-      target_group_id: groupId,
-      target_user_id: userId,
+      target_group_id: normalizedGroupId,
+      target_user_id: normalizedUserId,
     });
     if (error) throw error;
   },
 
   async leaveGroup({ groupId, userId }) {
+    const normalizedGroupId = validateUuid(groupId, 'Group ID');
+
     if (isDemoMode) {
+      const normalizedUserId = validateUuid(userId, 'User ID');
       const store = localStore.getStore();
       localStore.setStore({
         ...store,
-        groupMembers: store.groupMembers.filter((member) => !(member.group_id === groupId && member.user_id === userId)),
+        groupMembers: store.groupMembers.filter(
+          (member) => !(member.group_id === normalizedGroupId && member.user_id === normalizedUserId),
+        ),
       });
       return;
     }
 
-    const { error } = await supabase.rpc('leave_group', { target_group_id: groupId });
+    const { error } = await supabase.rpc('leave_group', { target_group_id: normalizedGroupId });
     if (error) throw error;
   },
 
   async deleteGroup(groupId) {
+    const normalizedGroupId = validateUuid(groupId, 'Group ID');
     if (isDemoMode) {
       const store = localStore.getStore();
       localStore.setStore({
         ...store,
-        groups: store.groups.filter((group) => group.id !== groupId),
-        groupMembers: store.groupMembers.filter((member) => member.group_id !== groupId),
-        groupInvitations: store.groupInvitations.filter((invite) => invite.group_id !== groupId),
+        groups: store.groups.filter((group) => group.id !== normalizedGroupId),
+        groupMembers: store.groupMembers.filter((member) => member.group_id !== normalizedGroupId),
+        groupInvitations: store.groupInvitations.filter((invite) => invite.group_id !== normalizedGroupId),
       });
       return;
     }
 
-    const { error } = await supabase.rpc('delete_private_group', { target_group_id: groupId });
+    const { error } = await supabase.rpc('delete_private_group', { target_group_id: normalizedGroupId });
     if (error) throw error;
   },
 };

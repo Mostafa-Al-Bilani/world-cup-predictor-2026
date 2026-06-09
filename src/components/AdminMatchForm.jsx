@@ -71,8 +71,8 @@ export function AdminMatchForm({ match, onSubmit, onCancel, saving }) {
       </div>
 
       <div className="mt-5 grid gap-4 md:grid-cols-2">
-        <Field label="Team A" name="team_a" value={form.team_a} onChange={updateForm} required />
-        <Field label="Team B" name="team_b" value={form.team_b} onChange={updateForm} required />
+        <Field label="Team A" name="team_a" value={form.team_a} onChange={updateForm} maxLength={80} required />
+        <Field label="Team B" name="team_b" value={form.team_b} onChange={updateForm} maxLength={80} required />
         <Field
           label={`Match date (${localTimeZone})`}
           name="match_date"
@@ -82,7 +82,7 @@ export function AdminMatchForm({ match, onSubmit, onCancel, saving }) {
           helpText={savedUtcPreview ? `Saved as ${formatDateTimeUtc(savedUtcPreview)} in Supabase.` : 'Choose a local kickoff time.'}
           required
         />
-        <Field label="Stage / Group" name="stage" value={form.stage} onChange={updateForm} required />
+        <Field label="Stage / Group" name="stage" value={form.stage} onChange={updateForm} maxLength={80} required />
         <Select label="Status" name="status" value={form.status} onChange={updateForm}>
           <option value="upcoming">Upcoming</option>
           <option value="live">Live</option>
@@ -94,11 +94,11 @@ export function AdminMatchForm({ match, onSubmit, onCancel, saving }) {
           <option value="draw">Draw</option>
           <option value="team_b">Team B wins</option>
         </Select>
-        <Field label="Team A score" name="team_a_score" type="number" min="0" value={form.team_a_score} onChange={updateForm} />
-        <Field label="Team B score" name="team_b_score" type="number" min="0" value={form.team_b_score} onChange={updateForm} />
-        <Field label="Venue" name="venue" value={form.venue} onChange={updateForm} />
-        <Field label="City" name="city" value={form.city} onChange={updateForm} />
-        <Field label="Host country" name="host_country" value={form.host_country} onChange={updateForm} />
+        <Field label="Team A score" name="team_a_score" type="number" min="0" max="99" value={form.team_a_score} onChange={updateForm} />
+        <Field label="Team B score" name="team_b_score" type="number" min="0" max="99" value={form.team_b_score} onChange={updateForm} />
+        <Field label="Venue" name="venue" value={form.venue} onChange={updateForm} maxLength={120} />
+        <Field label="City" name="city" value={form.city} onChange={updateForm} maxLength={80} />
+        <Field label="Host country" name="host_country" value={form.host_country} onChange={updateForm} maxLength={80} />
       </div>
 
       <button

@@ -153,6 +153,10 @@ as $$
     select 1 from public.profiles
     where id = check_user_id
       and is_admin = true
+      and (
+        coalesce(auth.role(), '') = 'service_role'
+        or check_user_id = auth.uid()
+      )
   );
 $$;
 
@@ -347,6 +351,10 @@ as $$
     where group_id = target_group_id
       and user_id = check_user_id
       and status = 'accepted'
+      and (
+        coalesce(auth.role(), '') = 'service_role'
+        or check_user_id = auth.uid()
+      )
   );
 $$;
 
@@ -357,23 +365,31 @@ stable
 security definer
 set search_path = public
 as $$
-  select exists (
-    select 1
-    from public.groups
-    where id = target_group_id
-      and owner_id = check_user_id
-  )
-  or exists (
-    select 1
-    from public.group_members
-    where group_id = target_group_id
-      and user_id = check_user_id
-      and status = 'accepted'
-      and role in ('owner', 'admin')
-  );
+  select check_user_id is not null
+    and (
+      coalesce(auth.role(), '') = 'service_role'
+      or check_user_id = auth.uid()
+    )
+    and (
+      exists (
+        select 1
+        from public.groups
+        where id = target_group_id
+          and owner_id = check_user_id
+      )
+      or exists (
+        select 1
+        from public.group_members
+        where group_id = target_group_id
+          and user_id = check_user_id
+          and status = 'accepted'
+          and role in ('owner', 'admin')
+      )
+    );
 $$;
 
-create or replace function public.search_profiles_for_invite(search_text text)
+drop function if exists public.search_profiles_for_invite(text);
+create or replace function public.search_profiles_for_invite(target_group_id uuid, search_text text)
 returns table (
   id uuid,
   username text,
@@ -387,11 +403,27 @@ as $$
   select profiles.id, profiles.username, profiles.email
   from public.profiles
   where auth.uid() is not null
+    and public.can_manage_group(target_group_id, auth.uid())
     and profiles.id <> auth.uid()
     and length(trim(search_text)) >= 2
+    and length(trim(search_text)) <= 80
     and (
       profiles.username ilike '%' || trim(search_text) || '%'
       or profiles.email ilike '%' || trim(search_text) || '%'
+    )
+    and not exists (
+      select 1
+      from public.group_members
+      where group_id = target_group_id
+        and user_id = profiles.id
+        and status = 'accepted'
+    )
+    and not exists (
+      select 1
+      from public.group_invitations
+      where group_id = target_group_id
+        and invited_user_id = profiles.id
+        and status = 'pending'
     )
   order by profiles.username
   limit 10;
@@ -408,6 +440,14 @@ declare
 begin
   if auth.uid() is null then
     raise exception 'You must be logged in to create a group';
+  end if;
+
+  if length(trim(coalesce(group_name, ''))) = 0 or length(trim(group_name)) > 80 then
+    raise exception 'Group name must be between 1 and 80 characters';
+  end if;
+
+  if length(trim(coalesce(group_description, ''))) > 500 then
+    raise exception 'Group description must be 500 characters or fewer';
   end if;
 
   insert into public.groups (name, description, owner_id, invite_code)
@@ -433,15 +473,22 @@ set search_path = public
 as $$
 declare
   target_group public.groups;
+  normalized_code text;
 begin
   if auth.uid() is null then
     raise exception 'You must be logged in to join a group';
   end if;
 
+  normalized_code := upper(trim(coalesce(target_invite_code, '')));
+
+  if normalized_code !~ '^[A-F0-9]{8}$' then
+    raise exception 'Invalid invite code';
+  end if;
+
   select *
   into target_group
   from public.groups
-  where invite_code = upper(trim(target_invite_code));
+  where invite_code = normalized_code;
 
   if target_group.id is null then
     raise exception 'Invalid invite code';
@@ -474,6 +521,17 @@ declare
 begin
   if not public.can_manage_group(target_group_id, auth.uid()) then
     raise exception 'Only group owners and admins can invite members';
+  end if;
+
+  if target_user_id = auth.uid() then
+    raise exception 'You cannot invite yourself';
+  end if;
+
+  if not exists (
+    select 1 from public.profiles
+    where id = target_user_id
+  ) then
+    raise exception 'User not found';
   end if;
 
   if exists (
@@ -616,6 +674,14 @@ declare
 begin
   if not public.can_manage_group(target_group_id, auth.uid()) then
     raise exception 'Only group owners and admins can update groups';
+  end if;
+
+  if length(trim(coalesce(group_name, ''))) = 0 or length(trim(group_name)) > 80 then
+    raise exception 'Group name must be between 1 and 80 characters';
+  end if;
+
+  if length(trim(coalesce(group_description, ''))) > 500 then
+    raise exception 'Group description must be 500 characters or fewer';
   end if;
 
   update public.groups
@@ -836,6 +902,19 @@ using (public.can_manage_group(group_id));
 grant select on public.leaderboard_profiles to anon, authenticated;
 grant select on public.latest_successful_sync to anon, authenticated;
 grant select, insert on public.sync_logs to authenticated;
+revoke execute on function public.recalculate_match_points(uuid) from PUBLIC;
+revoke execute on function public.recalculate_profile_totals(uuid) from PUBLIC;
+revoke execute on function public.generate_group_invite_code() from PUBLIC;
+revoke execute on function public.search_profiles_for_invite(uuid, text) from PUBLIC;
+revoke execute on function public.create_private_group(text, text) from PUBLIC;
+revoke execute on function public.join_group_by_invite_code(text) from PUBLIC;
+revoke execute on function public.invite_group_member(uuid, uuid) from PUBLIC;
+revoke execute on function public.respond_group_invitation(uuid, text) from PUBLIC;
+revoke execute on function public.remove_group_member(uuid, uuid) from PUBLIC;
+revoke execute on function public.leave_group(uuid) from PUBLIC;
+revoke execute on function public.regenerate_group_invite_code(uuid) from PUBLIC;
+revoke execute on function public.update_group_details(uuid, text, text) from PUBLIC;
+revoke execute on function public.delete_private_group(uuid) from PUBLIC;
 grant execute on function public.recalculate_match_points(uuid) to authenticated;
 grant execute on function public.recalculate_match_points(uuid) to service_role;
 revoke insert, update, delete on public.groups from authenticated;
@@ -844,7 +923,7 @@ revoke insert, update, delete on public.group_invitations from authenticated;
 grant select on public.groups to authenticated;
 grant select on public.group_members to authenticated;
 grant select on public.group_invitations to authenticated;
-grant execute on function public.search_profiles_for_invite(text) to authenticated;
+grant execute on function public.search_profiles_for_invite(uuid, text) to authenticated;
 grant execute on function public.create_private_group(text, text) to authenticated;
 grant execute on function public.join_group_by_invite_code(text) to authenticated;
 grant execute on function public.invite_group_member(uuid, uuid) to authenticated;

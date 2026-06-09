@@ -7,6 +7,7 @@ import { LoadingSpinner } from '../components/LoadingSpinner';
 import { useAuth } from '../context/AuthContext';
 import { groupService } from '../services/groupService';
 import { formatDate } from '../utils/date';
+import { getSafeErrorMessage } from '../utils/errors';
 
 const blankGroup = {
   name: '',
@@ -37,7 +38,7 @@ export function GroupsPage() {
       setGroups(groupRows);
       setInvitations(inviteRows);
     } catch (error) {
-      toast.error(error.message ?? 'Could not load groups.');
+      toast.error(getSafeErrorMessage(error, 'Could not load groups.'));
     } finally {
       setLoading(false);
     }
@@ -61,7 +62,7 @@ export function GroupsPage() {
       setGroupForm(blankGroup);
       navigate(`/groups/${group.id}`);
     } catch (error) {
-      toast.error(error.message ?? 'Could not create group.');
+      toast.error(getSafeErrorMessage(error, 'Could not create group.'));
     } finally {
       setSaving(false);
     }
@@ -76,7 +77,7 @@ export function GroupsPage() {
       setInviteCode('');
       navigate(`/groups/${group.id}`);
     } catch (error) {
-      toast.error(error.message ?? 'Could not join group.');
+      toast.error(getSafeErrorMessage(error, 'Could not join group.'));
     } finally {
       setJoining(false);
     }
@@ -89,7 +90,7 @@ export function GroupsPage() {
       toast.success(status === 'accepted' ? 'Invitation accepted.' : 'Invitation declined.');
       await load();
     } catch (error) {
-      toast.error(error.message ?? 'Could not update invitation.');
+      toast.error(getSafeErrorMessage(error, 'Could not update invitation.'));
     } finally {
       setRespondingId(null);
     }
@@ -190,6 +191,7 @@ export function GroupsPage() {
                 required
                 value={groupForm.name}
                 onChange={(event) => setGroupForm((current) => ({ ...current, name: event.target.value }))}
+                maxLength={80}
                 className="mt-2 w-full rounded-lg border border-white/10 bg-white/5 px-4 py-3 text-sm text-white outline-none focus:border-emerald-300"
                 placeholder="Office bracket"
               />
@@ -199,6 +201,7 @@ export function GroupsPage() {
               <textarea
                 value={groupForm.description}
                 onChange={(event) => setGroupForm((current) => ({ ...current, description: event.target.value }))}
+                maxLength={500}
                 className="mt-2 min-h-24 w-full rounded-lg border border-white/10 bg-white/5 px-4 py-3 text-sm text-white outline-none focus:border-emerald-300"
                 placeholder="For friends, coworkers, or family."
               />
@@ -219,6 +222,8 @@ export function GroupsPage() {
               required
               value={inviteCode}
               onChange={(event) => setInviteCode(event.target.value.toUpperCase())}
+              maxLength={8}
+              pattern="[A-Fa-f0-9]{8}"
               className="mt-4 w-full rounded-lg border border-white/10 bg-white/5 px-4 py-3 text-sm font-black uppercase tracking-[0.18em] text-white outline-none focus:border-emerald-300"
               placeholder="A1B2C3D4"
             />

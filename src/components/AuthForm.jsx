@@ -3,6 +3,7 @@ import { Link, useLocation, useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { PasswordField } from './PasswordField';
 import { useAuth } from '../context/AuthContext';
+import { getSafeErrorMessage } from '../utils/errors';
 
 export function AuthForm({ mode }) {
   const navigate = useNavigate();
@@ -48,7 +49,7 @@ export function AuthForm({ mode }) {
       }
       navigate(location.state?.from ?? '/matches', { replace: true });
     } catch (error) {
-      const message = error.message ?? 'Authentication failed. Check your email and password.';
+      const message = getSafeErrorMessage(error, 'Authentication failed. Check your email and password.');
       setErrorMessage(message);
       toast.error(message);
     } finally {
@@ -98,6 +99,7 @@ export function AuthForm({ mode }) {
                 onChange={updateForm}
                 ref={isRegister ? firstInputRef : undefined}
                 autoComplete="username"
+                maxLength={40}
                 className="mt-2 w-full rounded-lg border border-white/10 bg-white/5 px-4 py-3 text-white outline-none transition focus:border-emerald-300"
                 placeholder="goldenboot"
               />
@@ -113,6 +115,7 @@ export function AuthForm({ mode }) {
               onChange={updateForm}
               ref={isRegister ? undefined : firstInputRef}
               autoComplete="email"
+              maxLength={254}
               className="mt-2 w-full rounded-lg border border-white/10 bg-white/5 px-4 py-3 text-white outline-none transition focus:border-emerald-300"
               placeholder="you@example.com"
             />

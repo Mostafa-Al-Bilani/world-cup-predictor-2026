@@ -1,5 +1,6 @@
 import { isDemoMode, supabase } from './supabaseClient';
 import { localStore } from './localStore';
+import { normalizeEmail, normalizeUsername, validatePassword } from '../utils/validation';
 
 const makeProfile = ({ id, email, username, isAdmin = false }) => ({
   id,
@@ -26,12 +27,16 @@ export const authService = {
     return data.session?.user ?? null;
   },
   async signUp({ email, password, username }) {
+    const normalizedEmail = normalizeEmail(email);
+    const normalizedUsername = normalizeUsername(username);
+    const normalizedPassword = validatePassword(password);
+
     if (isDemoMode) {
       const profile = makeProfile({
         id: crypto.randomUUID(),
-        email,
-        username,
-        isAdmin: email.toLowerCase().includes('admin'),
+        email: normalizedEmail,
+        username: normalizedUsername,
+        isAdmin: normalizedEmail.includes('admin'),
       });
       localStore.upsertProfile(profile);
       window.localStorage.setItem('wc26-demo-user', JSON.stringify(profile));
@@ -39,25 +44,28 @@ export const authService = {
     }
 
     const { data, error } = await supabase.auth.signUp({
-      email,
-      password,
+      email: normalizedEmail,
+      password: normalizedPassword,
       options: {
-        data: { username },
+        data: { username: normalizedUsername },
       },
     });
     if (error) throw error;
     return data.user;
   },
   async signIn({ email, password }) {
+    const normalizedEmail = normalizeEmail(email);
+    const normalizedPassword = validatePassword(password);
+
     if (isDemoMode) {
       const store = localStore.getStore();
-      const profile = store.profiles.find((item) => item.email.toLowerCase() === email.toLowerCase());
+      const profile = store.profiles.find((item) => item.email.toLowerCase() === normalizedEmail);
       if (!profile) {
         const created = makeProfile({
           id: crypto.randomUUID(),
-          email,
-          username: email.split('@')[0],
-          isAdmin: email.toLowerCase().includes('admin'),
+          email: normalizedEmail,
+          username: normalizedEmail.split('@')[0],
+          isAdmin: normalizedEmail.includes('admin'),
         });
         localStore.upsertProfile(created);
         window.localStorage.setItem('wc26-demo-user', JSON.stringify(created));
@@ -67,7 +75,7 @@ export const authService = {
       return profile;
     }
 
-    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+    const { data, error } = await supabase.auth.signInWithPassword({ email: normalizedEmail, password: normalizedPassword });
     if (error) throw error;
     return data.user;
   },
@@ -80,21 +88,25 @@ export const authService = {
     if (error) throw error;
   },
   async sendPasswordResetEmail(email) {
+    const normalizedEmail = normalizeEmail(email);
+
     if (isDemoMode) {
       throw new Error('Password reset emails require Supabase. Local demo accounts can be recreated with any email.');
     }
 
-    const { error } = await supabase.auth.resetPasswordForEmail(email, {
+    const { error } = await supabase.auth.resetPasswordForEmail(normalizedEmail, {
       redirectTo: getPasswordResetRedirectUrl(),
     });
     if (error) throw error;
   },
   async updatePassword(password) {
+    const normalizedPassword = validatePassword(password, 'New password');
+
     if (isDemoMode) {
       throw new Error('Password updates require Supabase authentication.');
     }
 
-    const { data, error } = await supabase.auth.updateUser({ password });
+    const { data, error } = await supabase.auth.updateUser({ password: normalizedPassword });
     if (error) throw error;
     return data.user;
   },

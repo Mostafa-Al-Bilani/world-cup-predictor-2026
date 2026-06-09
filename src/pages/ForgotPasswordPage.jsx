@@ -2,6 +2,7 @@ import { useState } from 'react';
 import toast from 'react-hot-toast';
 import { Link } from 'react-router-dom';
 import { authService } from '../services/authService';
+import { getSafeErrorMessage } from '../utils/errors';
 
 export function ForgotPasswordPage() {
   const [email, setEmail] = useState('');
@@ -18,7 +19,7 @@ export function ForgotPasswordPage() {
       setSent(true);
       toast.success('Password reset email sent.');
     } catch (error) {
-      const message = error.message ?? 'Could not send a password reset email.';
+      const message = getSafeErrorMessage(error, 'Could not send a password reset email.');
       setErrorMessage(message);
       toast.error(message);
     } finally {
@@ -59,6 +60,7 @@ export function ForgotPasswordPage() {
             type="email"
             value={email}
             onChange={(event) => setEmail(event.target.value)}
+            maxLength={254}
             className="mt-2 w-full rounded-lg border border-white/10 bg-white/5 px-4 py-3 text-white outline-none transition focus:border-emerald-300"
             placeholder="you@example.com"
           />

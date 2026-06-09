@@ -10,6 +10,7 @@ import { TopThreePodium } from '../components/TopThreePodium';
 import { useAuth } from '../context/AuthContext';
 import { groupService } from '../services/groupService';
 import { formatDate } from '../utils/date';
+import { getSafeErrorMessage } from '../utils/errors';
 
 export function GroupDetailPage() {
   const { groupId } = useParams();
@@ -56,7 +57,7 @@ export function GroupDetailPage() {
       setLeaderboard(leaderboardRows);
       setInvitations(invitationRows);
     } catch (error) {
-      toast.error(error.message ?? 'Could not load group.');
+      toast.error(getSafeErrorMessage(error, 'Could not load group.'));
     } finally {
       setLoading(false);
     }
@@ -79,9 +80,9 @@ export function GroupDetailPage() {
     event.preventDefault();
     setSearching(true);
     try {
-      setSearchResults(await groupService.searchProfiles(searchQuery));
+      setSearchResults(await groupService.searchProfiles(searchQuery, groupId));
     } catch (error) {
-      toast.error(error.message ?? 'Could not search users.');
+      toast.error(getSafeErrorMessage(error, 'Could not search users.'));
     } finally {
       setSearching(false);
     }
@@ -95,7 +96,7 @@ export function GroupDetailPage() {
       setSearchResults((current) => current.filter((item) => item.id !== profile.id));
       await load();
     } catch (error) {
-      toast.error(error.message ?? 'Could not send invitation.');
+      toast.error(getSafeErrorMessage(error, 'Could not send invitation.'));
     } finally {
       setInvitingId(null);
     }
@@ -109,7 +110,7 @@ export function GroupDetailPage() {
       setGroup(updated);
       toast.success('Group updated.');
     } catch (error) {
-      toast.error(error.message ?? 'Could not update group.');
+      toast.error(getSafeErrorMessage(error, 'Could not update group.'));
     } finally {
       setSaving(false);
     }
@@ -122,7 +123,7 @@ export function GroupDetailPage() {
       setGroup(updated);
       toast.success('Invite code regenerated.');
     } catch (error) {
-      toast.error(error.message ?? 'Could not regenerate invite code.');
+      toast.error(getSafeErrorMessage(error, 'Could not regenerate invite code.'));
     } finally {
       setSaving(false);
     }
@@ -147,7 +148,7 @@ export function GroupDetailPage() {
         navigate('/groups');
       }
     } catch (error) {
-      toast.error(error.message ?? 'Could not complete action.');
+      toast.error(getSafeErrorMessage(error, 'Could not complete action.'));
     } finally {
       setConfirmAction(null);
     }
@@ -260,6 +261,7 @@ export function GroupDetailPage() {
                   <input
                     value={searchQuery}
                     onChange={(event) => setSearchQuery(event.target.value)}
+                    maxLength={80}
                     className="min-w-0 flex-1 rounded-lg border border-white/10 bg-white/5 px-4 py-3 text-sm text-white outline-none focus:border-emerald-300"
                     placeholder="username or email"
                   />
@@ -328,6 +330,7 @@ export function GroupDetailPage() {
                     required
                     value={editForm.name}
                     onChange={(event) => setEditForm((current) => ({ ...current, name: event.target.value }))}
+                    maxLength={80}
                     className="mt-2 w-full rounded-lg border border-white/10 bg-white/5 px-4 py-3 text-sm text-white outline-none focus:border-emerald-300"
                   />
                 </label>
@@ -336,6 +339,7 @@ export function GroupDetailPage() {
                   <textarea
                     value={editForm.description}
                     onChange={(event) => setEditForm((current) => ({ ...current, description: event.target.value }))}
+                    maxLength={500}
                     className="mt-2 min-h-24 w-full rounded-lg border border-white/10 bg-white/5 px-4 py-3 text-sm text-white outline-none focus:border-emerald-300"
                   />
                 </label>

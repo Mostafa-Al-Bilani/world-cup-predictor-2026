@@ -7,6 +7,7 @@ import { useAuth } from '../context/AuthContext';
 import { matchService } from '../services/matchService';
 import { predictionService } from '../services/predictionService';
 import { formatDateTime, isMatchLocked } from '../utils/date';
+import { getSafeErrorMessage } from '../utils/errors';
 import { getPredictionLabel, getPredictionStatus } from '../utils/predictions';
 
 const filters = [
@@ -34,7 +35,7 @@ export function MyPredictionsPage() {
         setMatches(matchRows);
         setPredictions(predictionRows);
       } catch (error) {
-        toast.error(error.message ?? 'Could not load your predictions.');
+        toast.error(getSafeErrorMessage(error, 'Could not load your predictions.'));
       } finally {
         setLoading(false);
       }

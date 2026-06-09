@@ -8,6 +8,7 @@ import { useAuth } from '../context/AuthContext';
 import { matchService } from '../services/matchService';
 import { predictionService } from '../services/predictionService';
 import { isMatchLocked } from '../utils/date';
+import { getSafeErrorMessage } from '../utils/errors';
 
 export function MatchesPage() {
   const navigate = useNavigate();
@@ -29,7 +30,7 @@ export function MatchesPage() {
         setMatches(matchRows);
         setPredictions(predictionRows);
       } catch (error) {
-        toast.error(error.message ?? 'Could not load matches.');
+        toast.error(getSafeErrorMessage(error, 'Could not load matches.'));
       } finally {
         setLoading(false);
       }
@@ -82,7 +83,7 @@ export function MatchesPage() {
       ]);
       toast.success('Prediction saved.');
     } catch (error) {
-      toast.error(error.message ?? 'Could not save prediction.');
+      toast.error(getSafeErrorMessage(error, 'Could not save prediction.'));
     } finally {
       setBusyMatchId(null);
     }

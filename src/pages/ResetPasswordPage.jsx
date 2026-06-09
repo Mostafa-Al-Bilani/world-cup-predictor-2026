@@ -4,6 +4,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { PasswordField } from '../components/PasswordField';
 import { useAuth } from '../context/AuthContext';
 import { authService } from '../services/authService';
+import { getSafeErrorMessage } from '../utils/errors';
 
 export function ResetPasswordPage() {
   const navigate = useNavigate();
@@ -33,7 +34,7 @@ export function ResetPasswordPage() {
       toast.success('Password updated. Log in with your new password.');
       navigate('/login', { replace: true });
     } catch (error) {
-      const message = error.message ?? 'Could not update password.';
+      const message = getSafeErrorMessage(error, 'Could not update password.');
       setErrorMessage(message);
       toast.error(message);
     } finally {

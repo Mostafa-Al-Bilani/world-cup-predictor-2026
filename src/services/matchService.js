@@ -1,6 +1,7 @@
 import { isDemoMode, supabase } from './supabaseClient';
 import { localStore } from './localStore';
 import { worldCupMatches } from '../data/matches';
+import { normalizeMatchPayload, validateUuid } from '../utils/validation';
 
 const sortMatches = (matches) =>
   [...matches].sort((a, b) => new Date(a.match_date).getTime() - new Date(b.match_date).getTime());
@@ -17,13 +18,15 @@ export const matchService = {
     return data;
   },
   async saveMatch(match) {
+    const normalizedMatch = normalizeMatchPayload(match);
+
     if (isDemoMode) {
       const store = localStore.getStore();
       const normalized = {
-        ...match,
-        id: match.id || crypto.randomUUID(),
-        match_number: match.match_number || store.matches.length + 1,
-        created_at: match.created_at || new Date().toISOString(),
+        ...normalizedMatch,
+        id: normalizedMatch.id || crypto.randomUUID(),
+        match_number: normalizedMatch.match_number || store.matches.length + 1,
+        created_at: normalizedMatch.created_at || new Date().toISOString(),
       };
       const matches = store.matches.some((item) => item.id === normalized.id)
         ? store.matches.map((item) => (item.id === normalized.id ? normalized : item))
@@ -32,18 +35,20 @@ export const matchService = {
       return normalized;
     }
 
-    const { data, error } = await supabase.from('matches').upsert(match).select('*').single();
+    const { data, error } = await supabase.from('matches').upsert(normalizedMatch).select('*').single();
     if (error) throw error;
     return data;
   },
   async deleteMatch(matchId) {
+    const normalizedMatchId = validateUuid(matchId, 'Match ID');
+
     if (isDemoMode) {
       const store = localStore.getStore();
-      localStore.saveMatches(store.matches.filter((match) => match.id !== matchId));
+      localStore.saveMatches(store.matches.filter((match) => match.id !== normalizedMatchId));
       return;
     }
 
-    const { error } = await supabase.from('matches').delete().eq('id', matchId);
+    const { error } = await supabase.from('matches').delete().eq('id', normalizedMatchId);
     if (error) throw error;
   },
 };

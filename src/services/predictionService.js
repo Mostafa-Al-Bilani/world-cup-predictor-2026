@@ -1,5 +1,6 @@
 import { isDemoMode, supabase } from './supabaseClient';
 import { localStore } from './localStore';
+import { validatePredictionResult, validateUuid } from '../utils/validation';
 
 const scorePredictionsForMatch = (match, predictions) =>
   predictions.map((prediction) => {
@@ -16,6 +17,14 @@ const scorePredictionsForMatch = (match, predictions) =>
     };
   });
 
+const getCurrentUserId = async () => {
+  const { data, error } = await supabase.auth.getUser();
+  if (error || !data.user?.id) {
+    throw new Error('You must be logged in to make predictions.');
+  }
+  return data.user.id;
+};
+
 export const predictionService = {
   async getPredictionsForUser(userId) {
     if (!userId) return [];
@@ -24,17 +33,22 @@ export const predictionService = {
       return store.predictions.filter((prediction) => prediction.user_id === userId);
     }
 
-    const { data, error } = await supabase.from('predictions').select('*').eq('user_id', userId);
+    const currentUserId = await getCurrentUserId();
+    const { data, error } = await supabase.from('predictions').select('*').eq('user_id', currentUserId);
     if (error) throw error;
     return data;
   },
   async upsertPrediction({ userId, matchId, predictedResult }) {
+    const normalizedMatchId = validateUuid(matchId, 'Match ID');
+    const normalizedResult = validatePredictionResult(predictedResult);
+
     if (isDemoMode) {
+      const normalizedUserId = validateUuid(userId, 'User ID');
       const prediction = {
         id: crypto.randomUUID(),
-        user_id: userId,
-        match_id: matchId,
-        predicted_result: predictedResult,
+        user_id: normalizedUserId,
+        match_id: normalizedMatchId,
+        predicted_result: normalizedResult,
         is_correct: null,
         points_awarded: 0,
         created_at: new Date().toISOString(),
@@ -43,13 +57,14 @@ export const predictionService = {
       return localStore.upsertPrediction(prediction);
     }
 
+    const currentUserId = await getCurrentUserId();
     const { data, error } = await supabase
       .from('predictions')
       .upsert(
         {
-          user_id: userId,
-          match_id: matchId,
-          predicted_result: predictedResult,
+          user_id: currentUserId,
+          match_id: normalizedMatchId,
+          predicted_result: normalizedResult,
           updated_at: new Date().toISOString(),
         },
         { onConflict: 'user_id,match_id' },
@@ -60,15 +75,16 @@ export const predictionService = {
     return data;
   },
   async recalculateMatch(matchId) {
+    const normalizedMatchId = validateUuid(matchId, 'Match ID');
     if (isDemoMode) {
       const store = localStore.getStore();
-      const match = store.matches.find((item) => item.id === matchId);
+      const match = store.matches.find((item) => item.id === normalizedMatchId);
       const predictions = scorePredictionsForMatch(match, store.predictions);
       localStore.setStore({ ...store, predictions });
       return;
     }
 
-    const { error } = await supabase.rpc('recalculate_match_points', { target_match_id: matchId });
+    const { error } = await supabase.rpc('recalculate_match_points', { target_match_id: normalizedMatchId });
     if (error) throw error;
   },
 };
