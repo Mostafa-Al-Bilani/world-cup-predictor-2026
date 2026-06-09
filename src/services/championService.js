@@ -3,19 +3,42 @@ import { normalizeChampionTeam, validateUuid } from '../utils/validation';
 import { isDemoMode, supabase } from './supabaseClient';
 import { localStore } from './localStore';
 
-const PLACEHOLDER_TEAMS = new Set(['', 'TBD', 'TO BE DETERMINED']);
+const PLACEHOLDER_TEAMS = new Set([
+  '',
+  'TBD',
+  'TO BE DETERMINED',
+  'N/A',
+  'NA',
+]);
+
+const PLACEHOLDER_TEAM_PATTERN = /^(?:[123][A-L](?:\/[A-L])*|[A-L][123]?|W\d+|L\d+)$/i;
 
 const normalizeTeamName = (value) => String(value ?? '').trim();
 
 const isSelectableTeam = (value) => {
   const team = normalizeTeamName(value);
-  return team && !PLACEHOLDER_TEAMS.has(team.toUpperCase());
+  const upperTeam = team.toUpperCase();
+
+  if (!team) return false;
+  if (PLACEHOLDER_TEAMS.has(upperTeam)) return false;
+  if (PLACEHOLDER_TEAM_PATTERN.test(upperTeam)) return false;
+  if (/\d/.test(upperTeam)) return false;
+  if (upperTeam.includes('/')) return false;
+
+  return true;
+};
+
+const isGroupStageMatch = (match) => {
+  const stage = String(match.stage ?? '').toLowerCase();
+
+  return stage.includes('group');
 };
 
 const getTeamsFromMatches = (matches) =>
   Array.from(
     new Set(
       matches
+        .filter(isGroupStageMatch)
         .flatMap((match) => [match.team_a, match.team_b])
         .map(normalizeTeamName)
         .filter(isSelectableTeam),
@@ -24,9 +47,11 @@ const getTeamsFromMatches = (matches) =>
 
 const getCurrentUserId = async () => {
   const { data, error } = await supabase.auth.getUser();
+
   if (error || !data.user?.id) {
     throw new Error('You must be logged in to choose a World Cup winner.');
   }
+
   return data.user.id;
 };
 
@@ -34,13 +59,21 @@ export const championService = {
   async getAvailableTeams() {
     if (isDemoMode) {
       const store = localStore.getStore();
-      return getTeamsFromMatches(store.matches?.length ? store.matches : worldCupMatches);
+      const matches = store.matches?.length ? store.matches : worldCupMatches;
+
+      return getTeamsFromMatches(matches);
     }
 
-    const { data, error } = await supabase.from('matches').select('team_a,team_b').order('match_number');
+    const { data, error } = await supabase
+      .from('matches')
+      .select('team_a,team_b,stage')
+      .ilike('stage', 'Group%')
+      .order('match_number');
+
     if (error) throw error;
 
     const teams = getTeamsFromMatches(data ?? []);
+
     return teams.length ? teams : getTeamsFromMatches(worldCupMatches);
   },
 
@@ -50,16 +83,24 @@ export const championService = {
     if (isDemoMode) {
       const normalizedUserId = validateUuid(userId, 'User ID');
       const store = localStore.getStore();
-      return store.championPredictions.find((prediction) => prediction.user_id === normalizedUserId) ?? null;
+
+      return (
+        store.championPredictions.find(
+          (prediction) => prediction.user_id === normalizedUserId,
+        ) ?? null
+      );
     }
 
     const currentUserId = await getCurrentUserId();
+
     const { data, error } = await supabase
       .from('world_cup_winner_predictions')
       .select('*')
       .eq('user_id', currentUserId)
       .maybeSingle();
+
     if (error) throw error;
+
     return data;
   },
 
@@ -70,9 +111,14 @@ export const championService = {
       const normalizedUserId = validateUuid(userId, 'User ID');
       const existing = localStore
         .getStore()
-        .championPredictions.find((prediction) => prediction.user_id === normalizedUserId && prediction.locked_at);
+        .championPredictions.find(
+          (prediction) =>
+            prediction.user_id === normalizedUserId && prediction.locked_at,
+        );
 
-      if (existing) throw new Error('World Cup winner prediction is already locked.');
+      if (existing) {
+        throw new Error('World Cup winner prediction is already locked.');
+      }
 
       return localStore.upsertChampionPrediction({
         id: crypto.randomUUID(),
@@ -85,8 +131,13 @@ export const championService = {
       });
     }
 
-    const { data, error } = await supabase.rpc('set_world_cup_winner_prediction', { team_name: team });
+    const { data, error } = await supabase.rpc(
+      'set_world_cup_winner_prediction',
+      { team_name: team },
+    );
+
     if (error) throw error;
+
     return data;
   },
 };
