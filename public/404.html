@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Redirecting...</title>
+  </head>
+  <body>
+    <script>
+      (function () {
+        var repoBase = '/world-cup-predictor-2026/';
+        var path = window.location.pathname;
+        var route = path.indexOf(repoBase) === 0 ? path.slice(repoBase.length) : '';
+        var normalizedRoute = route.replace(/^\/+/, '');
+        var target = window.location.origin + repoBase + window.location.search + '#/' + normalizedRoute;
+        window.location.replace(target);
+      })();
+    </script>
+  </body>
+</html>

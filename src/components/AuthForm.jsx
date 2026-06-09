@@ -2,8 +2,10 @@ import { useEffect, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { PasswordField } from './PasswordField';
+import { TeamPicker } from './TeamPicker';
 import { useAuth } from '../context/AuthContext';
 import { championService } from '../services/championService';
+import { rememberPendingChampionPick } from '../utils/championPick';
 import { getSafeErrorMessage } from '../utils/errors';
 
 export function AuthForm({ mode }) {
@@ -19,6 +21,7 @@ export function AuthForm({ mode }) {
   const [teams, setTeams] = useState([]);
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
+  const [successMessage, setSuccessMessage] = useState('');
   const formRef = useRef(null);
   const firstInputRef = useRef(null);
   const isRegister = mode === 'register';
@@ -71,11 +74,19 @@ export function AuthForm({ mode }) {
     event.preventDefault();
     setLoading(true);
     setErrorMessage('');
+    setSuccessMessage('');
 
     try {
       if (isRegister) {
-        await signUp(form);
-        toast.success('Account created. Check your email if confirmation is enabled.');
+        const result = await signUp(form);
+        if (result?.needsEmailConfirmation) {
+          rememberPendingChampionPick({ email: form.email, team: form.champion });
+          const message = 'Account created. Check your email to confirm it, then log in and lock your champion pick.';
+          setSuccessMessage(message);
+          toast.success('Check your email to confirm your account.');
+          return;
+        }
+        toast.success('Account created.');
       } else {
         await signIn(form);
         toast.success('Logged in successfully.');
@@ -131,6 +142,12 @@ export function AuthForm({ mode }) {
           </div>
         ) : null}
 
+        {successMessage ? (
+          <div className="mt-4 rounded-lg border border-emerald-300/30 bg-emerald-300/10 px-4 py-3 text-sm text-emerald-100">
+            {successMessage}
+          </div>
+        ) : null}
+
         <div className="mt-6 space-y-4">
           {isRegister ? (
             <label className="block min-w-0">
@@ -174,26 +191,18 @@ export function AuthForm({ mode }) {
           />
 
           {isRegister ? (
-            <label className="block min-w-0">
-              <span className="text-sm font-bold text-slate-300">World Cup winner pick</span>
-              <select
-                required
-                name="champion"
-                value={form.champion}
-                onChange={updateForm}
-                className="mt-2 w-full rounded-lg border border-white/10 bg-slate-900 px-4 py-3 text-white outline-none transition focus:border-emerald-300"
-              >
-                {teams.map((team) => (
-                  <option key={team} value={team} className="bg-slate-900 text-white">
-                    {team}
-                  </option>
-                ))}
-              </select>
-
-              <span className="mt-2 block text-xs leading-5 text-slate-400">
-                Correct champion prediction gives 3 points and locks after selection.
-              </span>
-            </label>
+            <TeamPicker
+              label="World Cup winner pick"
+              name="champion"
+              teams={teams}
+              value={form.champion}
+              onChange={(team) => setForm((current) => ({ ...current, champion: team }))}
+              helperText={
+                isDemoMode
+                  ? 'Correct champion prediction gives 3 points and locks after selection.'
+                  : 'If email confirmation is enabled, this pick is saved after you confirm and log in.'
+              }
+            />
           ) : null}
         </div>
 

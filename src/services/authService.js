@@ -16,7 +16,10 @@ const makeProfile = ({ id, email, username, isAdmin = false }) => ({
   created_at: new Date().toISOString(),
 });
 
-const getPasswordResetRedirectUrl = () => `${window.location.origin}${import.meta.env.BASE_URL}`;
+const getAppBaseUrl = () => `${window.location.origin}${import.meta.env.BASE_URL}`;
+const getHashRouteRedirectUrl = (path) => `${getAppBaseUrl()}#${path.startsWith('/') ? path : `/${path}`}`;
+const getEmailConfirmationRedirectUrl = () => getHashRouteRedirectUrl('/login');
+const getPasswordResetRedirectUrl = () => getAppBaseUrl();
 
 export const authService = {
   async getSession() {
@@ -43,7 +46,11 @@ export const authService = {
       });
       localStore.upsertProfile(profile);
       window.localStorage.setItem('wc26-demo-user', JSON.stringify(profile));
-      return profile;
+      return {
+        user: profile,
+        session: { user: profile },
+        needsEmailConfirmation: false,
+      };
     }
 
     const { data, error } = await supabase.auth.signUp({
@@ -51,10 +58,15 @@ export const authService = {
       password: normalizedPassword,
       options: {
         data: { username: normalizedUsername },
+        emailRedirectTo: getEmailConfirmationRedirectUrl(),
       },
     });
     if (error) throw error;
-    return data.user;
+    return {
+      user: data.user,
+      session: data.session,
+      needsEmailConfirmation: !data.session,
+    };
   },
   async signIn({ email, password }) {
     const normalizedEmail = normalizeEmail(email);

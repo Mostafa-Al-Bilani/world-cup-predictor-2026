@@ -3,8 +3,10 @@ import toast from 'react-hot-toast';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { Crown } from 'lucide-react';
 import { LoadingSpinner } from '../components/LoadingSpinner';
+import { TeamPicker } from '../components/TeamPicker';
 import { useAuth } from '../context/AuthContext';
 import { championService } from '../services/championService';
+import { clearPendingChampionPick, readPendingChampionPick } from '../utils/championPick';
 import { getSafeErrorMessage } from '../utils/errors';
 
 export function ChampionPickPage() {
@@ -21,8 +23,9 @@ export function ChampionPickPage() {
       setLoading(true);
       try {
         const rows = await championService.getAvailableTeams();
+        const pendingTeam = readPendingChampionPick(user?.email, rows);
         setTeams(rows);
-        setSelectedTeam((current) => current || rows[0] || '');
+        setSelectedTeam((current) => current || pendingTeam || rows[0] || '');
       } catch (error) {
         toast.error(getSafeErrorMessage(error, 'Could not load World Cup teams.'));
       } finally {
@@ -31,13 +34,14 @@ export function ChampionPickPage() {
     }
 
     loadTeams();
-  }, []);
+  }, [user?.email]);
 
   const submit = async (event) => {
     event.preventDefault();
     setSaving(true);
     try {
       await championService.setPrediction({ userId: user.id, predictedTeam: selectedTeam });
+      clearPendingChampionPick();
       await refreshChampionPrediction();
       toast.success('World Cup winner pick locked.');
       navigate(location.state?.from ?? '/matches', { replace: true });
@@ -72,21 +76,16 @@ export function ChampionPickPage() {
           </div>
         ) : (
           <>
-            <label className="mt-6 block">
-              <span className="text-sm font-bold text-slate-300">Team</span>
-              <select
-                required
+            <div className="mt-6">
+              <TeamPicker
+                label="Team"
+                name="champion"
+                teams={teams}
                 value={selectedTeam}
-                onChange={(event) => setSelectedTeam(event.target.value)}
-                className="mt-2 w-full rounded-lg border border-white/10 bg-white/5 px-4 py-3 text-sm text-white outline-none focus:border-emerald-300"
-              >
-                {teams.map((team) => (
-                  <option key={team} value={team}>
-                    {team}
-                  </option>
-                ))}
-              </select>
-            </label>
+                onChange={setSelectedTeam}
+                helperText="This pick cannot be changed after locking."
+              />
+            </div>
             <button
               type="submit"
               disabled={saving || !selectedTeam}

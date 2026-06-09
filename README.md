@@ -281,12 +281,26 @@ openfootball is a free public dataset, not a guaranteed real-time official FIFA 
 
 ## Supabase Auth Redirect URLs
 
-In Supabase Auth settings, add:
+In Supabase Auth URL settings, use the GitHub Pages base URL as the Site URL:
 
-- `http://localhost:5173/`
-- `https://<github-username>.github.io/<repository-name>/`
+```text
+https://<github-username>.github.io/<repository-name>/
+```
 
-If email confirmation is enabled, also set the production site URL to the GitHub Pages URL.
+Add these Redirect URLs:
+
+```text
+http://localhost:5173/
+http://localhost:5173/#/login
+http://localhost:5173/#/reset-password
+https://<github-username>.github.io/<repository-name>/
+https://<github-username>.github.io/<repository-name>/#/login
+https://<github-username>.github.io/<repository-name>/#/reset-password
+```
+
+Email confirmation redirects to `#/login`. Password recovery redirects to the app base URL, then the app detects the recovery session and sends the user to `#/reset-password`.
+
+The repository also includes `public/404.html` as a GitHub Pages SPA fallback. If an auth provider sends a clean path such as `/login`, GitHub Pages redirects it back into the hash router instead of showing a Pages 404.
 
 ## Password Reset
 
@@ -304,6 +318,7 @@ Make sure the Supabase Auth redirect URLs include the GitHub Pages base URL exac
 
 ```text
 https://<github-username>.github.io/<repository-name>/
+https://<github-username>.github.io/<repository-name>/#/reset-password
 ```
 
 ## GitHub Pages Deployment

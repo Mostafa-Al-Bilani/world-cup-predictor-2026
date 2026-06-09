@@ -67,8 +67,16 @@ export function AuthProvider({ children }) {
   }, [loadChampionPrediction, loadProfile, refreshUser]);
 
   const signUp = useCallback(async (payload) => {
-    const nextUser = await authService.signUp(payload);
+    const result = await authService.signUp(payload);
     setPasswordRecovery(false);
+    if (result?.needsEmailConfirmation) {
+      setUser(null);
+      setProfile(null);
+      setChampionPrediction(null);
+      return result;
+    }
+
+    const nextUser = result?.user;
     setUser(nextUser);
     const nextProfile = await loadProfile(nextUser);
     if (payload.champion && !nextProfile?.is_admin) {
@@ -81,6 +89,7 @@ export function AuthProvider({ children }) {
     } else {
       await loadChampionPrediction(nextUser, nextProfile);
     }
+    return result;
   }, [loadChampionPrediction, loadProfile]);
 
   const signIn = useCallback(async (payload) => {
