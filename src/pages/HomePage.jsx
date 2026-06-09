@@ -9,7 +9,7 @@ import { formatDateTime, getTimeRemaining } from '../utils/date';
 const features = [
   {
     title: 'Predict matches',
-    description: 'Pick Team A, draw, or Team B before kickoff.',
+    description: 'Pick the result or final winner and add an optional exact score before kickoff.',
     icon: ShieldCheck,
   },
   {

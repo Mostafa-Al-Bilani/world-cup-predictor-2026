@@ -2,13 +2,21 @@ import { isDemoMode, supabase } from './supabaseClient';
 import { localStore } from './localStore';
 import { getAccuracy } from '../utils/predictions';
 
-const recalculateProfile = (profile, predictions) => {
-  const userPredictions = predictions.filter((prediction) => prediction.user_id === profile.id);
+const recalculateProfile = (profile, store) => {
+  const userPredictions = store.predictions.filter((prediction) => prediction.user_id === profile.id);
   const scored = userPredictions.filter((prediction) => prediction.is_correct !== null);
   const correct = scored.filter((prediction) => prediction.is_correct).length;
+  const matchWinnerPoints = userPredictions.reduce((sum, prediction) => sum + (prediction.winner_points ?? 0), 0);
+  const exactScorePoints = userPredictions.reduce((sum, prediction) => sum + (prediction.exact_score_points ?? 0), 0);
+  const championPrediction = store.championPredictions?.find((prediction) => prediction.user_id === profile.id);
+  const championPoints = championPrediction?.points_awarded ?? 0;
+
   return {
     ...profile,
-    total_points: userPredictions.reduce((sum, prediction) => sum + (prediction.points_awarded ?? 0), 0),
+    total_points: matchWinnerPoints + exactScorePoints + championPoints,
+    match_winner_points: matchWinnerPoints,
+    exact_score_points: exactScorePoints,
+    champion_points: championPoints,
     correct_predictions: correct,
     total_predictions: userPredictions.length,
   };
@@ -30,14 +38,14 @@ export const profileService = {
     if (isDemoMode) {
       const store = localStore.getStore();
       return store.profiles
-        .map((profile) => recalculateProfile(profile, store.predictions))
+        .map((profile) => recalculateProfile(profile, store))
         .map((profile) => ({ ...profile, accuracy: getAccuracy(profile) }))
         .sort((a, b) => b.total_points - a.total_points);
     }
 
     const { data, error } = await supabase
       .from('leaderboard_profiles')
-      .select('id, username, total_points, correct_predictions, total_predictions, created_at')
+      .select('id, username, total_points, match_winner_points, exact_score_points, champion_points, correct_predictions, total_predictions, created_at')
       .order('total_points', { ascending: false })
       .order('correct_predictions', { ascending: false });
     if (error) throw error;

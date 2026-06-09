@@ -9,6 +9,7 @@ const defaultStore = {
   groups: [],
   groupMembers: [],
   groupInvitations: [],
+  championPredictions: [],
 };
 
 const readStore = () => {
@@ -24,6 +25,7 @@ const readStore = () => {
       groups: parsed.groups ?? [],
       groupMembers: parsed.groupMembers ?? [],
       groupInvitations: parsed.groupInvitations ?? [],
+      championPredictions: parsed.championPredictions ?? [],
     };
   } catch {
     return defaultStore;
@@ -58,5 +60,11 @@ export const localStore = {
   saveMatches(matches) {
     const store = readStore();
     writeStore({ ...store, matches });
+  },
+  upsertChampionPrediction(prediction) {
+    const store = readStore();
+    const championPredictions = store.championPredictions.filter((item) => item.user_id !== prediction.user_id);
+    writeStore({ ...store, championPredictions: [prediction, ...championPredictions] });
+    return prediction;
   },
 };

@@ -1,6 +1,7 @@
 import { isDemoMode, supabase } from './supabaseClient';
 import { localStore } from './localStore';
-import { validatePredictionResult, validateUuid } from '../utils/validation';
+import { normalizePredictionScorePair, validatePredictionResult, validateUuid } from '../utils/validation';
+import { calculatePredictionPoints } from '../utils/predictions';
 
 const scorePredictionsForMatch = (match, predictions) =>
   predictions.map((prediction) => {
@@ -8,11 +9,12 @@ const scorePredictionsForMatch = (match, predictions) =>
       return prediction;
     }
 
-    const isCorrect = prediction.predicted_result === match.result;
+    const points = calculatePredictionPoints(match, prediction);
+
     return {
       ...prediction,
-      is_correct: isCorrect,
-      points_awarded: isCorrect ? 1 : 0,
+      ...points,
+      points_awarded: points.total_points,
       updated_at: new Date().toISOString(),
     };
   });
@@ -38,9 +40,10 @@ export const predictionService = {
     if (error) throw error;
     return data;
   },
-  async upsertPrediction({ userId, matchId, predictedResult }) {
+  async upsertPrediction({ userId, matchId, predictedResult, predictedHomeScore = null, predictedAwayScore = null }) {
     const normalizedMatchId = validateUuid(matchId, 'Match ID');
     const normalizedResult = validatePredictionResult(predictedResult);
+    const scorePair = normalizePredictionScorePair(predictedHomeScore, predictedAwayScore);
 
     if (isDemoMode) {
       const normalizedUserId = validateUuid(userId, 'User ID');
@@ -49,7 +52,12 @@ export const predictionService = {
         user_id: normalizedUserId,
         match_id: normalizedMatchId,
         predicted_result: normalizedResult,
+        predicted_home_score: scorePair.predictedHomeScore,
+        predicted_away_score: scorePair.predictedAwayScore,
         is_correct: null,
+        winner_points: 0,
+        exact_score_points: 0,
+        total_points: 0,
         points_awarded: 0,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
@@ -65,6 +73,8 @@ export const predictionService = {
           user_id: currentUserId,
           match_id: normalizedMatchId,
           predicted_result: normalizedResult,
+          predicted_home_score: scorePair.predictedHomeScore,
+          predicted_away_score: scorePair.predictedAwayScore,
           updated_at: new Date().toISOString(),
         },
         { onConflict: 'user_id,match_id' },

@@ -62,7 +62,8 @@ export function ScoreboardPage() {
           <p className="text-sm font-black uppercase tracking-[0.32em] text-emerald-300">Public rankings</p>
           <h1 className="mt-3 text-4xl font-black sm:text-5xl">Scoreboard</h1>
           <p className="mt-3 max-w-2xl text-slate-300">
-            Every correct guess earns one point. The table updates from profile totals recalculated from predictions.
+            Correct match winner picks earn one point, exact scores add one bonus point, and a correct World Cup champion
+            pick adds three tournament points.
           </p>
           {latestSync ? (
             <p className="mt-3 text-sm text-slate-400">

@@ -86,9 +86,12 @@ export function AdminMatchForm({ match, onSubmit, onCancel, saving }) {
         <Select label="Status" name="status" value={form.status} onChange={updateForm}>
           <option value="upcoming">Upcoming</option>
           <option value="live">Live</option>
+          <option value="halftime">Halftime</option>
           <option value="finished">Finished</option>
+          <option value="postponed">Postponed</option>
+          <option value="cancelled">Cancelled</option>
         </Select>
-        <Select label="Final result" name="result" value={form.result} onChange={updateForm}>
+        <Select label="Final result / winner" name="result" value={form.result} onChange={updateForm}>
           <option value="">Not set</option>
           <option value="team_a">Team A wins</option>
           <option value="draw">Draw</option>

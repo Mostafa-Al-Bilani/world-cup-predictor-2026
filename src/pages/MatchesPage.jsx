@@ -60,7 +60,7 @@ export function MatchesPage() {
     setFilters((value) => ({ ...value, [event.target.name]: event.target.value }));
   };
 
-  const handlePredict = async (match, predictedResult) => {
+  const handlePredict = async (match, predictedResult, scoreDraft = {}) => {
     if (!isAuthenticated) {
       navigate('/login', { state: { from: '/matches' } });
       return;
@@ -76,6 +76,8 @@ export function MatchesPage() {
         userId: user.id,
         matchId: match.id,
         predictedResult,
+        predictedHomeScore: scoreDraft.predictedHomeScore,
+        predictedAwayScore: scoreDraft.predictedAwayScore,
       });
       setPredictions((items) => [
         ...items.filter((prediction) => prediction.match_id !== match.id),
@@ -98,7 +100,8 @@ export function MatchesPage() {
           <p className="text-sm font-black uppercase tracking-[0.32em] text-emerald-300">Full fixture board</p>
           <h1 className="mt-3 text-4xl font-black sm:text-5xl">Predict every match.</h1>
           <p className="mt-3 max-w-2xl text-slate-300">
-            Choose Team A, draw, or Team B before kickoff. Once a match starts, the card locks.
+            Choose the group-stage result or knockout final winner, then add an optional exact score for a bonus point.
+            Once a match starts, the card locks.
           </p>
         </div>
         <div className="grid gap-3 sm:grid-cols-3 lg:w-[680px]">
@@ -131,7 +134,10 @@ export function MatchesPage() {
             <option value="all">All statuses</option>
             <option value="upcoming">Upcoming</option>
             <option value="live">Live</option>
+            <option value="halftime">Halftime</option>
             <option value="finished">Finished</option>
+            <option value="postponed">Postponed</option>
+            <option value="cancelled">Cancelled</option>
           </select>
         </div>
       </div>

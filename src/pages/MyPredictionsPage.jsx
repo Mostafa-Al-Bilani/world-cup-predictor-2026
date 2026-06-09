@@ -8,7 +8,7 @@ import { matchService } from '../services/matchService';
 import { predictionService } from '../services/predictionService';
 import { formatDateTime, isMatchLocked } from '../utils/date';
 import { getSafeErrorMessage } from '../utils/errors';
-import { getPredictionLabel, getPredictionStatus } from '../utils/predictions';
+import { getPredictedScoreLabel, getPredictionLabel, getPredictionStatus, getPredictionTotalPoints } from '../utils/predictions';
 
 const filters = [
   { value: 'all', label: 'All predictions' },
@@ -18,7 +18,7 @@ const filters = [
 ];
 
 export function MyPredictionsPage() {
-  const { user } = useAuth();
+  const { championPrediction, user } = useAuth();
   const [matches, setMatches] = useState([]);
   const [predictions, setPredictions] = useState([]);
   const [activeFilter, setActiveFilter] = useState('all');
@@ -81,16 +81,31 @@ export function MyPredictionsPage() {
         </div>
       </div>
 
+      {championPrediction ? (
+        <section className="mt-8 rounded-lg border border-gold-300/30 bg-gold-300/10 p-5">
+          <p className="text-xs font-black uppercase tracking-[0.22em] text-gold-300">World Cup winner pick</p>
+          <div className="mt-2 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+            <h2 className="text-2xl font-black text-white">{championPrediction.predicted_team}</h2>
+            <p className="text-sm font-bold text-slate-200">
+              Champion points: <span className="text-gold-300">{championPrediction.points_awarded ?? 0}</span> / 3
+            </p>
+          </div>
+        </section>
+      ) : null}
+
       {rows.length ? (
         <div className="mt-8 overflow-hidden rounded-lg border border-white/10 bg-slate-950/72">
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[900px] text-left text-sm">
+            <table className="w-full min-w-[1040px] text-left text-sm">
               <thead className="bg-white/5 text-xs uppercase tracking-[0.18em] text-slate-400">
                 <tr>
                   <th className="px-5 py-4">Match</th>
                   <th className="px-5 py-4">Prediction</th>
+                  <th className="px-5 py-4">Score Pick</th>
                   <th className="px-5 py-4">Actual</th>
-                  <th className="px-5 py-4">Points</th>
+                  <th className="px-5 py-4">Winner</th>
+                  <th className="px-5 py-4">Exact</th>
+                  <th className="px-5 py-4">Total</th>
                   <th className="px-5 py-4">Status</th>
                   <th className="px-5 py-4">Date</th>
                   <th className="px-5 py-4">Editable</th>
@@ -103,10 +118,13 @@ export function MyPredictionsPage() {
                       {match.team_a} vs {match.team_b}
                     </td>
                     <td className="px-5 py-4 text-slate-300">{getPredictionLabel(match, prediction.predicted_result)}</td>
+                    <td className="px-5 py-4 text-slate-300">{getPredictedScoreLabel(prediction)}</td>
                     <td className="px-5 py-4 text-slate-300">
-                      {match.result ? getPredictionLabel(match, match.result) : 'Pending'}
+                      {match.result ? `${getPredictionLabel(match, match.result)} (${match.team_a_score ?? '-'}-${match.team_b_score ?? '-'})` : 'Pending'}
                     </td>
-                    <td className="px-5 py-4 font-black text-gold-300">{prediction.points_awarded}</td>
+                    <td className="px-5 py-4 text-slate-300">{prediction.winner_points ?? Number(prediction.is_correct === true)}</td>
+                    <td className="px-5 py-4 text-slate-300">{prediction.exact_score_points ?? 0}</td>
+                    <td className="px-5 py-4 font-black text-gold-300">{getPredictionTotalPoints(prediction)}</td>
                     <td className="px-5 py-4">
                       <StatusBadge label={getPredictionStatus(match, prediction)} />
                     </td>

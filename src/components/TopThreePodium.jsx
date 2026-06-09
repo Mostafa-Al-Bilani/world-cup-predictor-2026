@@ -24,9 +24,10 @@ export function TopThreePodium({ users }) {
           </div>
           <p className="mt-4 text-sm font-black uppercase tracking-[0.3em] text-slate-300">Rank #{index + 1}</p>
           <h3 className="mt-2 truncate text-2xl font-black text-white">{user.username}</h3>
-          <div className="mt-5 grid gap-2 text-sm lg:grid-cols-3">
+          <div className="mt-5 grid gap-2 text-sm sm:grid-cols-2">
             <Metric label="Points" value={user.total_points} />
-            <Metric label="Correct" value={user.correct_predictions} />
+            <Metric label="Match" value={(user.match_winner_points ?? 0) + (user.exact_score_points ?? 0)} />
+            <Metric label="Champion" value={user.champion_points ?? 0} />
             <Metric label="Accuracy" value={`${getAccuracy(user)}%`} />
           </div>
         </article>

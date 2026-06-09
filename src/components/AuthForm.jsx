@@ -3,18 +3,41 @@ import { Link, useLocation, useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { PasswordField } from './PasswordField';
 import { useAuth } from '../context/AuthContext';
+import { championService } from '../services/championService';
 import { getSafeErrorMessage } from '../utils/errors';
 
 export function AuthForm({ mode }) {
   const navigate = useNavigate();
   const location = useLocation();
   const { signIn, signUp, isDemoMode } = useAuth();
-  const [form, setForm] = useState({ username: '', email: '', password: '' });
+  const [form, setForm] = useState({ username: '', email: '', password: '', champion: '' });
+  const [teams, setTeams] = useState([]);
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
   const formRef = useRef(null);
   const firstInputRef = useRef(null);
   const isRegister = mode === 'register';
+
+  useEffect(() => {
+    if (!isRegister) return undefined;
+
+    let cancelled = false;
+
+    championService
+      .getAvailableTeams()
+      .then((rows) => {
+        if (cancelled) return;
+        setTeams(rows);
+        setForm((current) => ({ ...current, champion: current.champion || rows[0] || '' }));
+      })
+      .catch((error) => {
+        toast.error(getSafeErrorMessage(error, 'Could not load World Cup teams.'));
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isRegister]);
 
   useEffect(() => {
     const shouldFocusAuth =
@@ -127,9 +150,30 @@ export function AuthForm({ mode }) {
             onChange={updateForm}
             autoComplete={isRegister ? 'new-password' : 'current-password'}
           />
+          {isRegister ? (
+            <label className="block min-w-0">
+              <span className="text-sm font-bold text-slate-300">World Cup winner pick</span>
+              <select
+                required
+                name="champion"
+                value={form.champion}
+                onChange={updateForm}
+                className="mt-2 w-full rounded-lg border border-white/10 bg-white/5 px-4 py-3 text-white outline-none transition focus:border-emerald-300"
+              >
+                {teams.map((team) => (
+                  <option key={team} value={team}>
+                    {team}
+                  </option>
+                ))}
+              </select>
+              <span className="mt-2 block text-xs leading-5 text-slate-400">
+                Correct champion prediction gives 3 points and locks after selection.
+              </span>
+            </label>
+          ) : null}
         </div>
         <button
-          disabled={loading}
+          disabled={loading || (isRegister && !form.champion)}
           type="submit"
           className="mt-6 w-full rounded-full bg-emerald-300 px-5 py-3 text-sm font-black text-emerald-950 transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-60"
         >

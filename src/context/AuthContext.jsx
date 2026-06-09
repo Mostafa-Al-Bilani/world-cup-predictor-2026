@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { authService } from '../services/authService';
+import { championService } from '../services/championService';
 import { profileService } from '../services/profileService';
 import { isDemoMode, isSupabaseConfigured, supabase } from '../services/supabaseClient';
 
@@ -8,6 +9,7 @@ const AuthContext = createContext(null);
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [profile, setProfile] = useState(null);
+  const [championPrediction, setChampionPrediction] = useState(null);
   const [loading, setLoading] = useState(true);
   const [passwordRecovery, setPasswordRecovery] = useState(false);
 
@@ -21,16 +23,28 @@ export function AuthProvider({ children }) {
     return nextProfile;
   }, []);
 
+  const loadChampionPrediction = useCallback(async (activeUser, activeProfile) => {
+    if (!activeUser?.id || activeProfile?.is_admin) {
+      setChampionPrediction(null);
+      return null;
+    }
+
+    const prediction = await championService.getMyPrediction(activeUser.id);
+    setChampionPrediction(prediction);
+    return prediction;
+  }, []);
+
   const refreshUser = useCallback(async () => {
     setLoading(true);
     try {
       const activeUser = await authService.getSession();
       setUser(activeUser);
-      await loadProfile(activeUser);
+      const nextProfile = await loadProfile(activeUser);
+      await loadChampionPrediction(activeUser, nextProfile);
     } finally {
       setLoading(false);
     }
-  }, [loadProfile]);
+  }, [loadChampionPrediction, loadProfile]);
 
   useEffect(() => {
     refreshUser();
@@ -44,31 +58,45 @@ export function AuthProvider({ children }) {
         setPasswordRecovery(true);
       }
       setUser(session?.user ?? null);
-      loadProfile(session?.user ?? null);
+      loadProfile(session?.user ?? null).then((nextProfile) => {
+        loadChampionPrediction(session?.user ?? null, nextProfile);
+      }).catch(() => setChampionPrediction(null));
     });
 
     return () => subscription.unsubscribe();
-  }, [loadProfile, refreshUser]);
+  }, [loadChampionPrediction, loadProfile, refreshUser]);
 
   const signUp = useCallback(async (payload) => {
     const nextUser = await authService.signUp(payload);
     setPasswordRecovery(false);
     setUser(nextUser);
-    await loadProfile(nextUser);
-  }, [loadProfile]);
+    const nextProfile = await loadProfile(nextUser);
+    if (payload.champion && !nextProfile?.is_admin) {
+      try {
+        const prediction = await championService.setPrediction({ userId: nextUser.id, predictedTeam: payload.champion });
+        setChampionPrediction(prediction);
+      } catch {
+        await loadChampionPrediction(nextUser, nextProfile);
+      }
+    } else {
+      await loadChampionPrediction(nextUser, nextProfile);
+    }
+  }, [loadChampionPrediction, loadProfile]);
 
   const signIn = useCallback(async (payload) => {
     const nextUser = await authService.signIn(payload);
     setPasswordRecovery(false);
     setUser(nextUser);
-    await loadProfile(nextUser);
-  }, [loadProfile]);
+    const nextProfile = await loadProfile(nextUser);
+    await loadChampionPrediction(nextUser, nextProfile);
+  }, [loadChampionPrediction, loadProfile]);
 
   const signOut = useCallback(async () => {
     await authService.signOut();
     setPasswordRecovery(false);
     setUser(null);
     setProfile(null);
+    setChampionPrediction(null);
   }, []);
 
   const clearPasswordRecovery = useCallback(() => {
@@ -79,6 +107,7 @@ export function AuthProvider({ children }) {
     () => ({
       user,
       profile,
+      championPrediction,
       loading,
       isAuthenticated: Boolean(user),
       isAdmin: Boolean(profile?.is_admin),
@@ -89,9 +118,22 @@ export function AuthProvider({ children }) {
       signIn,
       signOut,
       refreshUser,
+      refreshChampionPrediction: () => loadChampionPrediction(user, profile),
       clearPasswordRecovery,
     }),
-    [clearPasswordRecovery, loading, passwordRecovery, profile, refreshUser, signIn, signOut, signUp, user],
+    [
+      championPrediction,
+      clearPasswordRecovery,
+      loadChampionPrediction,
+      loading,
+      passwordRecovery,
+      profile,
+      refreshUser,
+      signIn,
+      signOut,
+      signUp,
+      user,
+    ],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

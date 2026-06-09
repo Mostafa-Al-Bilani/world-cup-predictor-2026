@@ -1,11 +1,13 @@
 import { Toaster } from 'react-hot-toast';
 import { HashRouter, Route, Routes } from 'react-router-dom';
 import { AdminRoute } from './components/AdminRoute';
+import { ChampionGate } from './components/ChampionGate';
 import { PasswordRecoveryRedirect } from './components/PasswordRecoveryRedirect';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { AuthProvider } from './context/AuthContext';
 import { AppLayout } from './layouts/AppLayout';
 import { AdminDashboardPage } from './pages/AdminDashboardPage';
+import { ChampionPickPage } from './pages/ChampionPickPage';
 import { ConfigurationErrorPage } from './pages/ConfigurationErrorPage';
 import { ForgotPasswordPage } from './pages/ForgotPasswordPage';
 import { GroupDetailPage } from './pages/GroupDetailPage';
@@ -29,6 +31,7 @@ export function App() {
     <AuthProvider>
       <HashRouter>
         <PasswordRecoveryRedirect />
+        <ChampionGate />
         <Routes>
           <Route element={<AppLayout />}>
             <Route index element={<HomePage />} />
@@ -36,6 +39,14 @@ export function App() {
             <Route path="register" element={<RegisterPage />} />
             <Route path="forgot-password" element={<ForgotPasswordPage />} />
             <Route path="reset-password" element={<ResetPasswordPage />} />
+            <Route
+              path="champion-pick"
+              element={
+                <ProtectedRoute>
+                  <ChampionPickPage />
+                </ProtectedRoute>
+              }
+            />
             <Route path="matches" element={<MatchesPage />} />
             <Route path="scoreboard" element={<ScoreboardPage />} />
             <Route

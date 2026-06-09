@@ -1,5 +1,5 @@
 export const VALID_PREDICTION_RESULTS = new Set(['team_a', 'draw', 'team_b']);
-export const VALID_MATCH_STATUSES = new Set(['upcoming', 'live', 'finished']);
+export const VALID_MATCH_STATUSES = new Set(['upcoming', 'live', 'halftime', 'finished', 'postponed', 'cancelled']);
 export const VALID_MATCH_RESULTS = new Set(['team_a', 'draw', 'team_b']);
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -18,6 +18,7 @@ export const limits = {
   venue: 120,
   city: 80,
   hostCountry: 80,
+  championTeam: 80,
 };
 
 export function normalizeText(value, { label = 'Value', required = false, maxLength = 120 } = {}) {
@@ -69,12 +70,41 @@ export function validatePredictionResult(value) {
   return value;
 }
 
+export function normalizePredictionScore(value, label) {
+  if (value === '' || value === null || value === undefined) return null;
+
+  const number = Number(value);
+  if (!Number.isInteger(number) || number < 0 || number > 99) {
+    throw new Error(`${label} must be a non-negative whole number from 0 to 99.`);
+  }
+
+  return number;
+}
+
+export function normalizePredictionScorePair(homeScore, awayScore) {
+  const predictedHomeScore = normalizePredictionScore(homeScore, 'Team A score');
+  const predictedAwayScore = normalizePredictionScore(awayScore, 'Team B score');
+
+  if ((predictedHomeScore === null) !== (predictedAwayScore === null)) {
+    throw new Error('Enter both scores or leave both score fields blank.');
+  }
+
+  return {
+    predictedHomeScore,
+    predictedAwayScore,
+  };
+}
+
 export function normalizeInviteCode(value) {
   const code = normalizeText(value, { label: 'Invite code', required: true, maxLength: 32 }).toUpperCase();
   if (!INVITE_CODE_PATTERN.test(code)) {
     throw new Error('Invite code must be 8 letters or numbers.');
   }
   return code;
+}
+
+export function normalizeChampionTeam(value) {
+  return normalizeText(value, { label: 'Champion pick', required: true, maxLength: limits.championTeam });
 }
 
 export function normalizeGroupInput({ name, description }) {
