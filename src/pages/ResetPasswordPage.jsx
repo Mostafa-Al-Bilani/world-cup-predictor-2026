@@ -63,7 +63,7 @@ export function ResetPasswordPage() {
 
   return (
     <main className="mx-auto grid min-h-[72vh] w-full max-w-5xl grid-cols-[minmax(0,1fr)] items-center gap-8 px-4 py-12 sm:px-6 lg:grid-cols-[minmax(0,1fr)_420px] lg:px-8">
-      <section className="min-w-0">
+      <section className="min-w-0 max-w-[calc(100vw-2rem)] lg:max-w-none">
         <p className="text-sm font-black uppercase tracking-[0.32em] text-emerald-300">Choose a new password</p>
         <h1 className="mt-4 text-4xl font-black sm:text-6xl">You are back in control.</h1>
         <p className="mt-5 max-w-xl text-slate-300">
@@ -71,7 +71,10 @@ export function ResetPasswordPage() {
         </p>
       </section>
 
-      <form onSubmit={submit} className="w-full min-w-0 rounded-lg border border-white/10 bg-slate-950/76 p-6 shadow-2xl backdrop-blur">
+      <form
+        onSubmit={submit}
+        className="w-full min-w-0 max-w-[calc(100vw-2rem)] rounded-lg border border-white/10 bg-slate-950/76 p-6 shadow-2xl backdrop-blur lg:max-w-none"
+      >
         <h2 className="text-2xl font-black">Update password</h2>
         {errorMessage ? (
           <div className="mt-4 rounded-lg border border-rose-300/30 bg-rose-300/10 px-4 py-3 text-sm text-rose-100">

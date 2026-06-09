@@ -58,7 +58,7 @@ export function AuthForm({ mode }) {
 
   return (
     <div className="mx-auto grid min-h-[72vh] w-full max-w-6xl grid-cols-[minmax(0,1fr)] items-center gap-8 px-4 py-12 sm:px-6 lg:grid-cols-[minmax(0,1fr)_440px] lg:px-8">
-      <div className="min-w-0">
+      <div className="min-w-0 max-w-[calc(100vw-2rem)] lg:max-w-none">
         <p className="text-sm font-black uppercase tracking-[0.32em] text-emerald-300">
           {isRegister ? 'Join the prediction table' : 'Back to the pitch'}
         </p>
@@ -79,7 +79,7 @@ export function AuthForm({ mode }) {
       <form
         ref={formRef}
         onSubmit={submit}
-        className="w-full min-w-0 scroll-mt-24 rounded-lg border border-white/10 bg-slate-950/76 p-6 shadow-2xl backdrop-blur"
+        className="w-full min-w-0 max-w-[calc(100vw-2rem)] scroll-mt-24 rounded-lg border border-white/10 bg-slate-950/76 p-6 shadow-2xl backdrop-blur lg:max-w-none"
       >
         <h2 className="text-2xl font-black">{isRegister ? 'Register' : 'Log in'}</h2>
         {errorMessage ? (
