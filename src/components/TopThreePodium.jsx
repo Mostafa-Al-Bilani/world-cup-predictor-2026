@@ -1,0 +1,45 @@
+import { Crown, Medal, Trophy } from 'lucide-react';
+import { getAccuracy } from '../utils/predictions';
+
+const podiumStyles = [
+  'md:order-2 md:-translate-y-6 border-gold-300/50 bg-gold-300/15',
+  'md:order-1 border-slate-300/40 bg-slate-300/10',
+  'md:order-3 border-amber-700/50 bg-amber-700/15',
+];
+
+export function TopThreePodium({ users }) {
+  const topThree = users.slice(0, 3);
+
+  if (!topThree.length) return null;
+
+  return (
+    <section className="grid gap-4 md:grid-cols-3 md:items-end">
+      {topThree.map((user, index) => (
+        <article
+          key={user.id}
+          className={`rounded-lg border p-5 text-center shadow-xl ${podiumStyles[index]}`}
+        >
+          <div className="mx-auto grid h-14 w-14 place-items-center rounded-lg bg-slate-950/80 text-gold-300">
+            {index === 0 ? <Crown size={28} /> : index === 1 ? <Trophy size={26} /> : <Medal size={26} />}
+          </div>
+          <p className="mt-4 text-sm font-black uppercase tracking-[0.3em] text-slate-300">Rank #{index + 1}</p>
+          <h3 className="mt-2 truncate text-2xl font-black text-white">{user.username}</h3>
+          <div className="mt-5 grid grid-cols-3 gap-2 text-sm">
+            <Metric label="Points" value={user.total_points} />
+            <Metric label="Correct" value={user.correct_predictions} />
+            <Metric label="Accuracy" value={`${getAccuracy(user)}%`} />
+          </div>
+        </article>
+      ))}
+    </section>
+  );
+}
+
+function Metric({ label, value }) {
+  return (
+    <div className="rounded-lg bg-black/25 p-3">
+      <p className="text-lg font-black text-white">{value}</p>
+      <p className="mt-1 text-[10px] font-bold uppercase tracking-wide text-slate-400">{label}</p>
+    </div>
+  );
+}
