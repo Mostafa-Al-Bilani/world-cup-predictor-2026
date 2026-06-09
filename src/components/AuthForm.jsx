@@ -112,6 +112,13 @@ export function AuthForm({ mode }) {
         >
           {loading ? 'Working...' : isRegister ? 'Create account' : 'Log in'}
         </button>
+        {!isRegister ? (
+          <p className="mt-4 text-center text-sm">
+            <Link className="font-bold text-emerald-300 hover:text-white" to="/forgot-password">
+              Forgot your password?
+            </Link>
+          </p>
+        ) : null}
         <p className="mt-5 text-center text-sm text-slate-400">
           {isRegister ? 'Already have an account?' : 'New to the league?'}{' '}
           <Link className="font-bold text-emerald-300 hover:text-white" to={isRegister ? '/login' : '/register'}>

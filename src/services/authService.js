@@ -12,6 +12,8 @@ const makeProfile = ({ id, email, username, isAdmin = false }) => ({
   created_at: new Date().toISOString(),
 });
 
+const getPasswordResetRedirectUrl = () => `${window.location.origin}${import.meta.env.BASE_URL}`;
+
 export const authService = {
   async getSession() {
     if (isDemoMode) {
@@ -76,5 +78,24 @@ export const authService = {
     }
     const { error } = await supabase.auth.signOut();
     if (error) throw error;
+  },
+  async sendPasswordResetEmail(email) {
+    if (isDemoMode) {
+      throw new Error('Password reset emails require Supabase. Local demo accounts can be recreated with any email.');
+    }
+
+    const { error } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: getPasswordResetRedirectUrl(),
+    });
+    if (error) throw error;
+  },
+  async updatePassword(password) {
+    if (isDemoMode) {
+      throw new Error('Password updates require Supabase authentication.');
+    }
+
+    const { data, error } = await supabase.auth.updateUser({ password });
+    if (error) throw error;
+    return data.user;
   },
 };

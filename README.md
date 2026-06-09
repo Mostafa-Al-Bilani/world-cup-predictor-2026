@@ -108,6 +108,24 @@ In Supabase Auth settings, add:
 
 If email confirmation is enabled, also set the production site URL to the GitHub Pages URL.
 
+## Password Reset
+
+The login page includes a **Forgot your password?** link.
+
+Flow:
+
+1. The user enters their email on `#/forgot-password`.
+2. Supabase sends a recovery email.
+3. The recovery link redirects back to the GitHub Pages app base URL.
+4. The app detects the Supabase recovery session and sends the user to `#/reset-password`.
+5. The user chooses a new password and logs in again.
+
+Make sure the Supabase Auth redirect URLs include the GitHub Pages base URL exactly:
+
+```text
+https://<github-username>.github.io/<repository-name>/
+```
+
 ## GitHub Pages Deployment
 
 This project uses GitHub Pages only. It does not use Vercel, Netlify, Render, Railway, Firebase Hosting, or the `gh-pages` package.
