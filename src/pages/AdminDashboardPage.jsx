@@ -10,6 +10,7 @@ import { fixtureSyncService } from '../services/fixtureSyncService';
 import { matchService } from '../services/matchService';
 import { predictionService } from '../services/predictionService';
 import { profileService } from '../services/profileService';
+import { syncLogService } from '../services/syncLogService';
 import { formatDateTime } from '../utils/date';
 
 export function AdminDashboardPage() {
@@ -22,13 +23,19 @@ export function AdminDashboardPage() {
   const [saving, setSaving] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [syncSummary, setSyncSummary] = useState(null);
+  const [latestSyncLog, setLatestSyncLog] = useState(null);
 
   const load = async () => {
     setLoading(true);
     try {
-      const [matchRows, statRows] = await Promise.all([matchService.getMatches(), profileService.getAdminStats()]);
+      const [matchRows, statRows, syncLog] = await Promise.all([
+        matchService.getMatches(),
+        profileService.getAdminStats(),
+        syncLogService.getLatestAdminSyncLog().catch(() => null),
+      ]);
       setMatches(matchRows);
       setStats(statRows);
+      setLatestSyncLog(syncLog);
     } catch (error) {
       toast.error(error.message ?? 'Could not load admin dashboard.');
     } finally {
@@ -86,7 +93,11 @@ export function AdminDashboardPage() {
     try {
       const summary = await fixtureSyncService.syncOpenFootballFixtures();
       setSyncSummary(summary);
-      toast.success(`Fixture sync complete: ${summary.inserted} inserted, ${summary.updated} updated.`);
+      if (summary.failed_count) {
+        toast.error(`Fixture sync finished with ${summary.failed_count} failed recalculation.`);
+      } else {
+        toast.success(`Fixture sync complete: ${summary.inserted} inserted, ${summary.updated} updated.`);
+      }
       await load();
     } catch (error) {
       toast.error(error.message ?? 'Could not sync fixtures.');
@@ -127,10 +138,12 @@ export function AdminDashboardPage() {
 
       {syncSummary ? (
         <div className="mt-6 rounded-lg border border-emerald-300/30 bg-emerald-300/10 p-4 text-sm text-emerald-100">
-          Synced {syncSummary.total} fixtures from openfootball: {syncSummary.inserted} inserted, {syncSummary.updated}{' '}
-          updated, {syncSummary.unchanged} unchanged.
+          Synced {syncSummary.total} fixtures from {syncSummary.provider_used}: {syncSummary.inserted} inserted,{' '}
+          {syncSummary.updated} updated, {syncSummary.unchanged} unchanged, {syncSummary.recalculated_count} recalculated.
         </div>
       ) : null}
+
+      {latestSyncLog ? <SyncLogCard log={latestSyncLog} /> : null}
 
       {stats ? (
         <section className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
@@ -221,5 +234,40 @@ function StatCard({ icon: Icon, label, value }) {
       <p className="mt-4 text-3xl font-black text-white">{value}</p>
       <p className="mt-1 text-xs font-bold uppercase tracking-[0.22em] text-slate-400">{label}</p>
     </article>
+  );
+}
+
+function SyncLogCard({ log }) {
+  const hasError = log.status === 'error' || log.failed_count > 0 || log.error_message;
+
+  return (
+    <section className="mt-6 rounded-lg border border-white/10 bg-white/[0.04] p-5">
+      <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+        <div>
+          <p className="text-xs font-black uppercase tracking-[0.22em] text-slate-400">Latest fixture sync</p>
+          <h2 className="mt-2 text-xl font-black text-white">
+            {log.provider}
+            {log.fallback_used ? ' fallback' : ''}
+          </h2>
+          <p className="mt-1 text-sm text-slate-300">Finished {formatDateTime(log.finished_at)}</p>
+          {hasError ? <p className="mt-2 text-sm text-rose-200">{log.error_message ?? 'Sync completed with errors.'}</p> : null}
+        </div>
+        <div className="grid grid-cols-2 gap-2 text-sm sm:grid-cols-4">
+          <MiniMetric label="Inserted" value={log.inserted_count} />
+          <MiniMetric label="Updated" value={log.updated_count} />
+          <MiniMetric label="Recalculated" value={log.recalculated_count} />
+          <MiniMetric label="Failed" value={log.failed_count} />
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function MiniMetric({ label, value }) {
+  return (
+    <div className="rounded-lg bg-slate-950/70 px-4 py-3 text-center">
+      <p className="text-lg font-black text-white">{value}</p>
+      <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">{label}</p>
+    </div>
   );
 }

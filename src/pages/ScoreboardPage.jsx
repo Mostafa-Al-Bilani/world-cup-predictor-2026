@@ -6,6 +6,8 @@ import { ScoreboardTable } from '../components/ScoreboardTable';
 import { TopThreePodium } from '../components/TopThreePodium';
 import { useAuth } from '../context/AuthContext';
 import { profileService } from '../services/profileService';
+import { syncLogService } from '../services/syncLogService';
+import { formatDateTime } from '../utils/date';
 import { getAccuracy } from '../utils/predictions';
 
 export function ScoreboardPage() {
@@ -14,12 +16,18 @@ export function ScoreboardPage() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [sortBy, setSortBy] = useState('total_points');
+  const [latestSync, setLatestSync] = useState(null);
 
   useEffect(() => {
     async function load() {
       setLoading(true);
       try {
-        setPlayers(await profileService.getLeaderboard());
+        const [leaderboard, syncLog] = await Promise.all([
+          profileService.getLeaderboard(),
+          syncLogService.getLatestSuccessfulSync().catch(() => null),
+        ]);
+        setPlayers(leaderboard);
+        setLatestSync(syncLog);
       } catch (error) {
         toast.error(error.message ?? 'Could not load scoreboard.');
       } finally {
@@ -55,6 +63,12 @@ export function ScoreboardPage() {
           <p className="mt-3 max-w-2xl text-slate-300">
             Every correct guess earns one point. The table updates from profile totals recalculated from predictions.
           </p>
+          {latestSync ? (
+            <p className="mt-3 text-sm text-slate-400">
+              Fixture data last updated {formatDateTime(latestSync.finished_at)} from {latestSync.provider}
+              {latestSync.fallback_used ? ' fallback' : ''}.
+            </p>
+          ) : null}
         </div>
         <div className="grid gap-3 sm:grid-cols-2 lg:w-[520px]">
           <input
