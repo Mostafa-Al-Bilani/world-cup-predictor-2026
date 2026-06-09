@@ -22,7 +22,10 @@ const HOST_COUNTRY_MARKERS = [
 ];
 
 const FINISHED_STATUS_CODES = new Set(['FT', 'AET', 'PEN']);
-const LIVE_STATUS_CODES = new Set(['1H', 'HT', '2H', 'ET', 'BT', 'P', 'LIVE', 'INT']);
+const HALFTIME_STATUS_CODES = new Set(['HT']);
+const LIVE_STATUS_CODES = new Set(['1H', '2H', 'ET', 'BT', 'P', 'LIVE', 'INT', 'SUSP']);
+const POSTPONED_STATUS_CODES = new Set(['PST']);
+const CANCELLED_STATUS_CODES = new Set(['CANC', 'ABD', 'AWD', 'WO']);
 
 const safeString = (value) => String(value ?? '').trim();
 
@@ -74,9 +77,18 @@ const readOpenFootballScore = (fixture) => {
   const score = fixture.score ?? {};
   const teamAScore = readNumber(fixture.score1 ?? fixture.team1_score ?? fixture.goals1 ?? score.ft?.[0]);
   const teamBScore = readNumber(fixture.score2 ?? fixture.team2_score ?? fixture.goals2 ?? score.ft?.[1]);
+  const halftimeTeamAScore = readNumber(fixture.score_ht1 ?? score.ht?.[0]);
+  const halftimeTeamBScore = readNumber(fixture.score_ht2 ?? score.ht?.[1]);
 
   if (teamAScore === null || teamBScore === null) {
-    return { hasScore: false, team_a_score: null, team_b_score: null, result: null };
+    return {
+      hasScore: false,
+      team_a_score: null,
+      team_b_score: null,
+      result: null,
+      halftime_team_a_score: halftimeTeamAScore,
+      halftime_team_b_score: halftimeTeamBScore,
+    };
   }
 
   return {
@@ -84,13 +96,18 @@ const readOpenFootballScore = (fixture) => {
     team_a_score: teamAScore,
     team_b_score: teamBScore,
     result: getMatchResultFromScores(teamAScore, teamBScore),
+    halftime_team_a_score: halftimeTeamAScore,
+    halftime_team_b_score: halftimeTeamBScore,
   };
 };
 
 const normalizeOpenFootballStatus = (fixture, hasScore) => {
   const status = safeString(fixture.status).toLowerCase();
   if (hasScore || ['finished', 'played', 'complete', 'completed'].includes(status)) return 'finished';
+  if (['halftime', 'half-time'].includes(status)) return 'halftime';
   if (['live', 'in_progress', 'in progress'].includes(status)) return 'live';
+  if (['postponed'].includes(status)) return 'postponed';
+  if (['cancelled', 'canceled', 'abandoned'].includes(status)) return 'cancelled';
   return 'upcoming';
 };
 
@@ -153,6 +170,10 @@ export const hasMatchChanged = (existing, next) => {
     'api_slug',
     'provider_name',
     'provider_fixture_id',
+    'elapsed',
+    'status_detail',
+    'halftime_team_a_score',
+    'halftime_team_b_score',
   ];
 
   if (comparableDate(existing.match_date) !== comparableDate(next.match_date)) return true;
@@ -177,6 +198,10 @@ export const getChangedFields = (existing, next) => {
     'api_slug',
     'provider_name',
     'provider_fixture_id',
+    'elapsed',
+    'status_detail',
+    'halftime_team_a_score',
+    'halftime_team_b_score',
   ];
 
   return fields.filter((field) => {
@@ -209,6 +234,10 @@ export const normalizeOpenFootballFixtures = (rawMatches) =>
         team_a_score: score.team_a_score,
         team_b_score: score.team_b_score,
         result: score.result,
+        elapsed: readNumber(fixture.elapsed),
+        status_detail: fixture.status ?? null,
+        halftime_team_a_score: score.halftime_team_a_score,
+        halftime_team_b_score: score.halftime_team_b_score,
         venue: fixture.venue ?? fixture.stadium ?? ground,
         city: fixture.city ?? getCity(ground),
         host_country: fixture.host_country ?? getHostCountry(ground),
@@ -230,21 +259,37 @@ export const normalizeOpenFootballFixtures = (rawMatches) =>
 const normalizeApiFootballStatus = (fixtureStatus) => {
   const code = safeString(fixtureStatus?.short).toUpperCase();
   if (FINISHED_STATUS_CODES.has(code)) return 'finished';
+  if (HALFTIME_STATUS_CODES.has(code)) return 'halftime';
   if (LIVE_STATUS_CODES.has(code)) return 'live';
+  if (POSTPONED_STATUS_CODES.has(code)) return 'postponed';
+  if (CANCELLED_STATUS_CODES.has(code)) return 'cancelled';
   return 'upcoming';
 };
 
 const readApiFootballScore = (fixture, status) => {
   const scoreHome = readNumber(fixture.goals?.home ?? fixture.score?.fulltime?.home);
   const scoreAway = readNumber(fixture.goals?.away ?? fixture.score?.fulltime?.away);
+  const halftimeHome = readNumber(fixture.score?.halftime?.home);
+  const halftimeAway = readNumber(fixture.score?.halftime?.away);
   const hasScore = scoreHome !== null && scoreAway !== null;
   const isFinished = status === 'finished';
+  const teamAWon = fixture.teams?.home?.winner === true;
+  const teamBWon = fixture.teams?.away?.winner === true;
+  let result = null;
+
+  if (hasScore && isFinished) {
+    if (teamAWon) result = 'team_a';
+    else if (teamBWon) result = 'team_b';
+    else result = getMatchResultFromScores(scoreHome, scoreAway);
+  }
 
   return {
     hasScore,
     team_a_score: hasScore ? scoreHome : null,
     team_b_score: hasScore ? scoreAway : null,
-    result: hasScore && isFinished ? getMatchResultFromScores(scoreHome, scoreAway) : null,
+    result,
+    halftime_team_a_score: halftimeHome,
+    halftime_team_b_score: halftimeAway,
   };
 };
 
@@ -275,6 +320,10 @@ export const normalizeApiFootballFixtures = (rawFixtures) =>
         team_a_score: score.team_a_score,
         team_b_score: score.team_b_score,
         result: score.result,
+        elapsed: readNumber(fixture.fixture?.status?.elapsed),
+        status_detail: fixture.fixture?.status?.long ?? fixture.fixture?.status?.short ?? null,
+        halftime_team_a_score: score.halftime_team_a_score,
+        halftime_team_b_score: score.halftime_team_b_score,
         venue,
         city,
         host_country: getHostCountry(`${venue} ${city}`),
@@ -316,9 +365,13 @@ export const buildMatchPayload = (fixture, existing, syncedAt = new Date().toISO
     match_date: fixture.match_date ?? existing?.match_date,
     stage: mergeText(fixture.stage, existing?.stage, 'Group stage'),
     status: shouldKeepExistingFinal ? existing.status : fixture.status,
-    team_a_score: fixture.hasScore ? fixture.team_a_score : existing?.team_a_score ?? null,
-    team_b_score: fixture.hasScore ? fixture.team_b_score : existing?.team_b_score ?? null,
+    team_a_score: shouldKeepExistingFinal ? existing.team_a_score : fixture.hasScore ? fixture.team_a_score : existing?.team_a_score ?? null,
+    team_b_score: shouldKeepExistingFinal ? existing.team_b_score : fixture.hasScore ? fixture.team_b_score : existing?.team_b_score ?? null,
     result: providerHasFinalScore ? fixture.result : existing?.result ?? null,
+    elapsed: mergeNumber(fixture.elapsed, existing?.elapsed),
+    status_detail: mergeText(fixture.status_detail, existing?.status_detail),
+    halftime_team_a_score: mergeNumber(fixture.halftime_team_a_score, existing?.halftime_team_a_score),
+    halftime_team_b_score: mergeNumber(fixture.halftime_team_b_score, existing?.halftime_team_b_score),
     venue: mergeText(fixture.venue, existing?.venue),
     city: mergeText(fixture.city, existing?.city),
     host_country: mergeText(fixture.host_country, existing?.host_country),

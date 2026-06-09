@@ -2,7 +2,11 @@ name: Sync World Cup Fixtures
 
 on:
   schedule:
+    # Baseline refresh outside match windows. Keeps fixture changes synced without burning provider quota.
     - cron: '17 */4 * * *'
+    # Near-live tournament refresh windows. GitHub cron is not real-time and may be delayed.
+    - cron: '17 * 11-30 6 *'
+    - cron: '17 * 1-19 7 *'
   workflow_dispatch:
 
 permissions:
