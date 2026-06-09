@@ -8,6 +8,8 @@ import { AppLayout } from './layouts/AppLayout';
 import { AdminDashboardPage } from './pages/AdminDashboardPage';
 import { ConfigurationErrorPage } from './pages/ConfigurationErrorPage';
 import { ForgotPasswordPage } from './pages/ForgotPasswordPage';
+import { GroupDetailPage } from './pages/GroupDetailPage';
+import { GroupsPage } from './pages/GroupsPage';
 import { HomePage } from './pages/HomePage';
 import { LoginPage } from './pages/LoginPage';
 import { MatchesPage } from './pages/MatchesPage';
@@ -41,6 +43,22 @@ export function App() {
               element={
                 <ProtectedRoute>
                   <MyPredictionsPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="groups"
+              element={
+                <ProtectedRoute>
+                  <GroupsPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="groups/:groupId"
+              element={
+                <ProtectedRoute>
+                  <GroupDetailPage />
                 </ProtectedRoute>
               }
             />

@@ -6,6 +6,9 @@ const defaultStore = {
   matches: worldCupMatches,
   profiles: [],
   predictions: [],
+  groups: [],
+  groupMembers: [],
+  groupInvitations: [],
 };
 
 const readStore = () => {
@@ -18,6 +21,9 @@ const readStore = () => {
       matches: parsed.matches?.length ? parsed.matches : worldCupMatches,
       profiles: parsed.profiles ?? [],
       predictions: parsed.predictions ?? [],
+      groups: parsed.groups ?? [],
+      groupMembers: parsed.groupMembers ?? [],
+      groupInvitations: parsed.groupInvitations ?? [],
     };
   } catch {
     return defaultStore;

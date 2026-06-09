@@ -14,6 +14,7 @@ const navItems = [
 export function Navbar() {
   const [open, setOpen] = useState(false);
   const { isAuthenticated, isAdmin, profile, signOut } = useAuth();
+  const visibleNavItems = isAuthenticated ? [...navItems, { to: '/groups', label: 'Groups' }] : navItems;
 
   const linkClass = ({ isActive }) =>
     clsx(
@@ -39,7 +40,7 @@ export function Navbar() {
         </Link>
 
         <div className="hidden items-center gap-1 lg:flex">
-          {navItems.map((item) => (
+          {visibleNavItems.map((item) => (
             <NavLink key={item.to} to={item.to} className={linkClass}>
               {item.label}
             </NavLink>
@@ -98,7 +99,7 @@ export function Navbar() {
       {open ? (
         <div className="border-t border-white/10 bg-slate-950 px-4 py-4 lg:hidden">
           <div className="flex flex-col gap-2">
-            {navItems.map((item) => (
+            {visibleNavItems.map((item) => (
               <NavLink key={item.to} to={item.to} className={linkClass} onClick={() => setOpen(false)}>
                 {item.label}
               </NavLink>
