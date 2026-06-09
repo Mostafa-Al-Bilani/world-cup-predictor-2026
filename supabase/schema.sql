@@ -27,6 +27,9 @@ create table if not exists public.matches (
   host_country text,
   external_ref text,
   api_slug text,
+  provider_name text,
+  provider_fixture_id text,
+  last_synced_at timestamptz,
   created_at timestamptz not null default now(),
   constraint matches_status_check check (status in ('upcoming', 'live', 'finished')),
   constraint matches_result_check check (result is null or result in ('team_a', 'draw', 'team_b')),
@@ -35,6 +38,10 @@ create table if not exists public.matches (
     (team_b_score is null or team_b_score >= 0)
   )
 );
+
+alter table public.matches add column if not exists provider_name text;
+alter table public.matches add column if not exists provider_fixture_id text;
+alter table public.matches add column if not exists last_synced_at timestamptz;
 
 create table if not exists public.predictions (
   id uuid primary key default gen_random_uuid(),
@@ -55,9 +62,32 @@ create index if not exists matches_status_idx on public.matches(status);
 create unique index if not exists matches_external_ref_unique_idx
 on public.matches(external_ref)
 where external_ref is not null;
+create unique index if not exists matches_provider_fixture_unique_idx
+on public.matches(provider_name, provider_fixture_id)
+where provider_name is not null and provider_fixture_id is not null;
 create index if not exists predictions_user_id_idx on public.predictions(user_id);
 create index if not exists predictions_match_id_idx on public.predictions(match_id);
 create index if not exists profiles_score_idx on public.profiles(total_points desc, correct_predictions desc);
+
+create table if not exists public.sync_logs (
+  id uuid primary key default gen_random_uuid(),
+  provider text not null,
+  fallback_used boolean not null default false,
+  status text not null,
+  started_at timestamptz not null,
+  finished_at timestamptz not null,
+  inserted_count integer not null default 0,
+  updated_count integer not null default 0,
+  unchanged_count integer not null default 0,
+  recalculated_count integer not null default 0,
+  failed_count integer not null default 0,
+  error_message text,
+  created_at timestamptz not null default now(),
+  constraint sync_logs_status_check check (status in ('success', 'error'))
+);
+
+create index if not exists sync_logs_created_at_idx on public.sync_logs(created_at desc);
+create index if not exists sync_logs_status_idx on public.sync_logs(status, created_at desc);
 
 create or replace function public.is_admin(check_user_id uuid default auth.uid())
 returns boolean
@@ -178,7 +208,7 @@ as $$
 declare
   final_result text;
 begin
-  if not public.is_admin(auth.uid()) then
+  if coalesce(auth.role(), '') <> 'service_role' and not public.is_admin(auth.uid()) then
     raise exception 'Only admins can recalculate points';
   end if;
 
@@ -215,9 +245,27 @@ select
   created_at
 from public.profiles;
 
+create or replace view public.latest_successful_sync as
+select
+  provider,
+  fallback_used,
+  started_at,
+  finished_at,
+  inserted_count,
+  updated_count,
+  unchanged_count,
+  recalculated_count,
+  failed_count,
+  created_at
+from public.sync_logs
+where status = 'success'
+order by finished_at desc
+limit 1;
+
 alter table public.profiles enable row level security;
 alter table public.matches enable row level security;
 alter table public.predictions enable row level security;
+alter table public.sync_logs enable row level security;
 
 drop policy if exists "Users can read their own profile" on public.profiles;
 create policy "Users can read their own profile"
@@ -295,5 +343,18 @@ on public.predictions for all
 using (public.is_admin())
 with check (public.is_admin());
 
+drop policy if exists "Admins can read sync logs" on public.sync_logs;
+create policy "Admins can read sync logs"
+on public.sync_logs for select
+using (public.is_admin());
+
+drop policy if exists "Admins can insert sync logs" on public.sync_logs;
+create policy "Admins can insert sync logs"
+on public.sync_logs for insert
+with check (public.is_admin());
+
 grant select on public.leaderboard_profiles to anon, authenticated;
+grant select on public.latest_successful_sync to anon, authenticated;
+grant select, insert on public.sync_logs to authenticated;
 grant execute on function public.recalculate_match_points(uuid) to authenticated;
+grant execute on function public.recalculate_match_points(uuid) to service_role;
