@@ -7,7 +7,7 @@ export function PasswordField({ label, name, value, onChange, autoComplete, plac
   return (
     <label className="block">
       <span className="text-sm font-bold text-slate-300">{label}</span>
-      <span className="mt-2 flex rounded-lg border border-white/10 bg-white/5 transition focus-within:border-emerald-300">
+      <span className="mt-2 flex w-full min-w-0 overflow-hidden rounded-lg border border-white/10 bg-white/5 transition focus-within:border-emerald-300">
         <input
           required
           minLength={6}
@@ -22,7 +22,7 @@ export function PasswordField({ label, name, value, onChange, autoComplete, plac
         <button
           type="button"
           onClick={() => setVisible((current) => !current)}
-          className="grid w-12 place-items-center rounded-r-lg text-slate-300 transition hover:bg-white/10 hover:text-white"
+          className="grid w-12 shrink-0 place-items-center rounded-r-lg text-slate-300 transition hover:bg-white/10 hover:text-white"
           aria-label={visible ? 'Hide password' : 'Show password'}
         >
           {visible ? <EyeOff size={18} /> : <Eye size={18} />}
