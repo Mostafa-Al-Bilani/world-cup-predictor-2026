@@ -12,6 +12,7 @@ import {
   buildFixtureLookupMaps,
   buildMatchPayload,
   findExistingMatchForFixture,
+  getDeletableDuplicateMatchIdsForFixture,
   hasMatchChanged,
   normalizeApiFootballFixtures,
   normalizeEspnFixtures,
@@ -221,6 +222,16 @@ const recalculateMatches = async (supabase, matchIds) => {
   return { recalculated, failed, failures };
 };
 
+const getPredictionCountsByMatch = async (supabase) => {
+  const { data, error } = await supabase.from('predictions').select('match_id');
+  if (error) throw error;
+
+  return (data ?? []).reduce((counts, prediction) => {
+    counts.set(prediction.match_id, (counts.get(prediction.match_id) ?? 0) + 1);
+    return counts;
+  }, new Map());
+};
+
 const dryRunFixtures = async () => {
   const startedAt = new Date().toISOString();
   const provider = readProvider();
@@ -261,9 +272,15 @@ const syncFixtures = async () => {
     const { data: existingMatches, error: loadError } = await supabase.from('matches').select('*');
     if (loadError) throw loadError;
 
-    const maps = buildFixtureLookupMaps(existingMatches ?? []);
+    const predictionCounts = await getPredictionCountsByMatch(supabase);
+    const matchesWithPredictionCounts = (existingMatches ?? []).map((match) => ({
+      ...match,
+      prediction_count: predictionCounts.get(match.id) ?? 0,
+    }));
+    const maps = buildFixtureLookupMaps(matchesWithPredictionCounts);
     const inserts = [];
     const updates = [];
+    const duplicateDeleteIds = new Set();
     const recalculateIds = new Set();
     const syncedAt = new Date().toISOString();
 
@@ -276,6 +293,8 @@ const syncFixtures = async () => {
         continue;
       }
 
+      getDeletableDuplicateMatchIdsForFixture(fixture, maps, existing.id).forEach((id) => duplicateDeleteIds.add(id));
+
       const update = { ...payload, id: existing.id };
       if (hasMatchChanged(existing, update)) {
         updates.push(update);
@@ -283,6 +302,11 @@ const syncFixtures = async () => {
           recalculateIds.add(existing.id);
         }
       }
+    }
+
+    if (duplicateDeleteIds.size) {
+      const { error } = await supabase.from('matches').delete().in('id', [...duplicateDeleteIds]);
+      if (error) throw error;
     }
 
     if (updates.length) {
@@ -311,6 +335,7 @@ const syncFixtures = async () => {
       inserted_count: inserts.length,
       updated_count: updates.length,
       unchanged_count: fixtures.length - inserts.length - updates.length,
+      deduplicated_count: duplicateDeleteIds.size,
       recalculated_count: recalculateSummary.recalculated,
       failed_count: failedCount,
       error_message: errorMessage || null,

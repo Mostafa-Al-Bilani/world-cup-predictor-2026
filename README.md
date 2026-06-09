@@ -243,6 +243,8 @@ The script:
 - never prints secrets;
 - normalizes provider data into the existing `matches` table;
 - matches existing rows by provider fixture id, external reference, match number, date, and team names;
+- matches knockout placeholder fixtures by kickoff and stage so labels like `2A` and `Group A 2nd Place` do not create duplicate cards;
+- deletes no-prediction duplicate match rows created by previous provider placeholder mismatches;
 - avoids overwriting useful existing values with null or empty provider values;
 - inserts new matches;
 - updates changed kickoff time, teams, stage, status, elapsed time, halftime score, venue, city, score, and result;

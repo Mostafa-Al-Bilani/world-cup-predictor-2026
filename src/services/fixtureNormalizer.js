@@ -70,6 +70,70 @@ const getCity = (ground = '') => {
 const getHostCountry = (ground = '') =>
   HOST_COUNTRY_MARKERS.find((item) => safeString(ground).includes(item.marker))?.country ?? 'USA';
 
+const normalizeStageKey = (stage) => {
+  const key = slugifyFixtureValue(stage);
+  if (key === 'round-of-32') return 'round-of-32';
+  if (key === 'round-of-16') return 'round-of-16';
+  if (['quarterfinal', 'quarterfinals', 'quarter-final', 'quarter-finals'].includes(key)) return 'quarterfinal';
+  if (['semifinal', 'semifinals', 'semi-final', 'semi-finals'].includes(key)) return 'semifinal';
+  if (['third-place', '3rd-place-match', 'third-place-match'].includes(key)) return 'third-place';
+  if (key === 'final') return 'final';
+  return key;
+};
+
+const normalizeKickoffMinute = (value) => {
+  if (!value) return '';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  date.setUTCSeconds(0, 0);
+  return date.toISOString();
+};
+
+const PLACEHOLDER_TEAM_PATTERN =
+  /^(?:tbd|[123][a-l](?:\/[a-l])*|[a-l][123]?|w\d+|l\d+|group\s+[a-l]\s+(?:1st|2nd|3rd)\s+place|round\s+of\s+\d+\s+\d+\s+winner|round\s+of\s+\d+\s+\d+\s+loser|quarterfinal\s+\d+\s+winner|quarterfinal\s+\d+\s+loser|semifinal\s+\d+\s+winner|semifinal\s+\d+\s+loser)$/i;
+
+const isPlaceholderTeam = (value) => {
+  const team = safeString(value);
+  if (!team) return true;
+  return PLACEHOLDER_TEAM_PATTERN.test(team);
+};
+
+const isKnockoutPlaceholderFixture = (match) =>
+  !normalizeStageKey(match.stage).startsWith('group') && (isPlaceholderTeam(match.team_a) || isPlaceholderTeam(match.team_b));
+
+const fixtureSlotKey = (match) => {
+  if (!isKnockoutPlaceholderFixture(match)) return null;
+  const kickoff = normalizeKickoffMinute(match.match_date);
+  const stage = normalizeStageKey(match.stage);
+  return kickoff && stage ? `${kickoff}|${stage}` : null;
+};
+
+const addListMapValue = (map, key, value) => {
+  if (!key) return;
+  const values = map.get(key) ?? [];
+  values.push(value);
+  map.set(key, values);
+};
+
+const sortPlaceholderCandidates = (fixture, candidates = []) => {
+  const providerKey = fixture.provider_name && fixture.provider_fixture_id ? `${fixture.provider_name}:${fixture.provider_fixture_id}` : null;
+  return [...candidates].sort((a, b) => {
+    const predictionDelta = (b.prediction_count ?? 0) - (a.prediction_count ?? 0);
+    if (predictionDelta) return predictionDelta;
+
+    const aProvider = providerKey && `${a.provider_name}:${a.provider_fixture_id}` === providerKey;
+    const bProvider = providerKey && `${b.provider_name}:${b.provider_fixture_id}` === providerKey;
+    if ((a.prediction_count ?? 0) > 0 || (b.prediction_count ?? 0) > 0) {
+      if (aProvider !== bProvider) return Number(bProvider) - Number(aProvider);
+    }
+
+    const seededDelta = Number(Boolean(b.match_number)) - Number(Boolean(a.match_number));
+    if (seededDelta) return seededDelta;
+
+    return new Date(a.created_at ?? 0).getTime() - new Date(b.created_at ?? 0).getTime();
+  });
+};
+
 const readNumber = (value) => {
   if (value === null || value === undefined || value === '') return null;
   const number = Number(value);
@@ -459,24 +523,47 @@ export const normalizeEspnFixtures = (rawEvents) =>
     })
     .sort((a, b) => new Date(a.match_date).getTime() - new Date(b.match_date).getTime() || a.originalIndex - b.originalIndex);
 
-export const buildFixtureLookupMaps = (matches) => ({
-  byProvider: new Map(
-    matches
-      .filter((match) => match.provider_name && match.provider_fixture_id)
-      .map((match) => [`${match.provider_name}:${match.provider_fixture_id}`, match]),
-  ),
-  byExternalRef: new Map(matches.filter((match) => match.external_ref).map((match) => [match.external_ref, match])),
-  byMatchNumber: new Map(matches.filter((match) => match.match_number).map((match) => [match.match_number, match])),
-  byFingerprint: new Map(matches.map((match) => [fixtureFingerprint(match), match])),
-});
+export const buildFixtureLookupMaps = (matches) => {
+  const byPlaceholderSlot = new Map();
+  matches.forEach((match) => addListMapValue(byPlaceholderSlot, fixtureSlotKey(match), match));
+
+  return {
+    byProvider: new Map(
+      matches
+        .filter((match) => match.provider_name && match.provider_fixture_id)
+        .map((match) => [`${match.provider_name}:${match.provider_fixture_id}`, match]),
+    ),
+    byExternalRef: new Map(matches.filter((match) => match.external_ref).map((match) => [match.external_ref, match])),
+    byMatchNumber: new Map(matches.filter((match) => match.match_number).map((match) => [match.match_number, match])),
+    byFingerprint: new Map(matches.map((match) => [fixtureFingerprint(match), match])),
+    byPlaceholderSlot,
+  };
+};
+
+const findPlaceholderMatchForFixture = (fixture, maps) => {
+  const key = fixtureSlotKey(fixture);
+  if (!key) return null;
+  return sortPlaceholderCandidates(fixture, maps.byPlaceholderSlot.get(key))[0] ?? null;
+};
 
 export const findExistingMatchForFixture = (fixture, maps) =>
+  findPlaceholderMatchForFixture(fixture, maps) ??
   (fixture.provider_name && fixture.provider_fixture_id
     ? maps.byProvider.get(`${fixture.provider_name}:${fixture.provider_fixture_id}`)
     : null) ??
   (fixture.external_ref ? maps.byExternalRef.get(fixture.external_ref) : null) ??
   (fixture.match_number ? maps.byMatchNumber.get(fixture.match_number) : null) ??
   maps.byFingerprint.get(fixtureFingerprint(fixture));
+
+export const getDeletableDuplicateMatchIdsForFixture = (fixture, maps, canonicalId) => {
+  const key = fixtureSlotKey(fixture);
+  if (!key || !canonicalId) return [];
+
+  return (maps.byPlaceholderSlot.get(key) ?? [])
+    .filter((match) => match.id !== canonicalId && (match.prediction_count ?? 0) === 0)
+    .map((match) => match.id)
+    .filter(Boolean);
+};
 
 export const buildMatchPayload = (fixture, existing, syncedAt = new Date().toISOString()) => {
   const existingFinished = existing?.status === 'finished';

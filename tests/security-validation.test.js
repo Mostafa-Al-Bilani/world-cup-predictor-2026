@@ -1,10 +1,18 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { getSafeErrorMessage } from '../src/utils/errors.js';
+import { getTeamFlag } from '../src/utils/flags.js';
 import { canViewGroup, mergeOwnedGroupsWithMembershipRows, ownerMembershipForGroup } from '../src/utils/groups.js';
 import { getTopThreeUsers, hasScoredLeaderboardEntries, sortLeaderboardUsers } from '../src/utils/leaderboard.js';
 import { calculateChampionPoints, calculatePredictionPoints } from '../src/utils/predictions.js';
-import { buildMatchPayload, normalizeEspnFixtures, shouldRecalculateMatch } from '../src/services/fixtureNormalizer.js';
+import {
+  buildFixtureLookupMaps,
+  buildMatchPayload,
+  findExistingMatchForFixture,
+  getDeletableDuplicateMatchIdsForFixture,
+  normalizeEspnFixtures,
+  shouldRecalculateMatch,
+} from '../src/services/fixtureNormalizer.js';
 import {
   normalizeGroupInput,
   normalizeInviteCode,
@@ -190,6 +198,13 @@ test('top three helper handles small and tied leaderboards', () => {
   );
 });
 
+test('returns flags only for real country team names', () => {
+  assert.equal(getTeamFlag('Mexico'), '🇲🇽');
+  assert.equal(getTeamFlag('United States'), '🇺🇸');
+  assert.equal(getTeamFlag('Group A 2nd Place'), null);
+  assert.equal(getTeamFlag('2A'), null);
+});
+
 test('normalizes ESPN scheduled World Cup events without an API key', () => {
   const [match] = normalizeEspnFixtures([
     {
@@ -273,4 +288,47 @@ test('does not recalculate points for ESPN live score updates before final statu
     ),
     false,
   );
+});
+
+test('matches ESPN knockout placeholders to seeded rows and flags empty duplicates for deletion', () => {
+  const seeded = {
+    id: 'seeded-match',
+    match_number: 73,
+    provider_name: 'openfootball',
+    provider_fixture_id: '73',
+    external_ref: 'openfootball-2026-73',
+    team_a: '2A',
+    team_b: '2B',
+    match_date: '2026-06-28T19:00:00.000Z',
+    stage: 'Round of 32',
+    venue: 'SoFi Stadium',
+    prediction_count: 0,
+    created_at: '2026-01-01T00:00:00.000Z',
+  };
+  const duplicate = {
+    id: 'espn-duplicate',
+    provider_name: 'espn',
+    provider_fixture_id: '760490',
+    external_ref: 'espn-2026-760490',
+    team_a: 'Group A 2nd Place',
+    team_b: 'Group B 2nd Place',
+    match_date: '2026-06-28T19:00:00.000Z',
+    stage: 'Round Of 32',
+    prediction_count: 0,
+    created_at: '2026-06-09T00:00:00.000Z',
+  };
+  const fixture = {
+    provider_name: 'espn',
+    provider_fixture_id: '760490',
+    external_ref: 'espn-2026-760490',
+    team_a: 'Group A 2nd Place',
+    team_b: 'Group B 2nd Place',
+    match_date: '2026-06-28T19:00:00.000Z',
+    stage: 'Round Of 32',
+  };
+  const maps = buildFixtureLookupMaps([duplicate, seeded]);
+  const existing = findExistingMatchForFixture(fixture, maps);
+
+  assert.equal(existing.id, seeded.id);
+  assert.deepEqual(getDeletableDuplicateMatchIdsForFixture(fixture, maps, existing.id), [duplicate.id]);
 });
