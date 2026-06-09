@@ -1058,7 +1058,8 @@ begin
 end;
 $$;
 
-create or replace view public.leaderboard_profiles as
+drop view if exists public.leaderboard_profiles;
+create view public.leaderboard_profiles as
 select
   id,
   username,
