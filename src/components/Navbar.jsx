@@ -25,7 +25,7 @@ export function Navbar() {
 
   return (
     <header className="sticky top-0 z-40 border-b border-white/10 bg-slate-950/82 backdrop-blur-xl">
-      <nav className="mx-auto flex w-full max-w-7xl items-center justify-between px-4 py-4 sm:px-6 lg:px-8">
+      <nav className="mx-auto flex w-full max-w-7xl items-center justify-between py-4 pl-4 pr-8 sm:px-6 lg:px-8">
         <Link to="/" className="flex min-w-0 flex-1 items-center gap-3 lg:flex-none">
           <span className="grid h-10 w-10 place-items-center rounded-lg border border-gold-300/40 bg-gold-300/15 text-gold-300 shadow-gold">
             <Trophy size={20} />
