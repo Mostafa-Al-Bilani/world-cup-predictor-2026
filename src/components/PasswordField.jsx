@@ -5,7 +5,7 @@ export function PasswordField({ label, name, value, onChange, autoComplete, plac
   const [visible, setVisible] = useState(false);
 
   return (
-    <label className="block">
+    <label className="block min-w-0">
       <span className="text-sm font-bold text-slate-300">{label}</span>
       <span className="mt-2 flex w-full min-w-0 overflow-hidden rounded-lg border border-white/10 bg-white/5 transition focus-within:border-emerald-300">
         <input

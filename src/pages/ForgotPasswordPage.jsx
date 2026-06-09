@@ -27,8 +27,8 @@ export function ForgotPasswordPage() {
   };
 
   return (
-    <main className="mx-auto grid min-h-[72vh] max-w-5xl items-center gap-8 px-4 py-12 sm:px-6 lg:grid-cols-[1fr_420px] lg:px-8">
-      <section>
+    <main className="mx-auto grid min-h-[72vh] w-full max-w-5xl grid-cols-[minmax(0,1fr)] items-center gap-8 px-4 py-12 sm:px-6 lg:grid-cols-[minmax(0,1fr)_420px] lg:px-8">
+      <section className="min-w-0">
         <p className="text-sm font-black uppercase tracking-[0.32em] text-emerald-300">Account recovery</p>
         <h1 className="mt-4 text-4xl font-black sm:text-6xl">Reset your password.</h1>
         <p className="mt-5 max-w-xl text-slate-300">
@@ -37,7 +37,7 @@ export function ForgotPasswordPage() {
         </p>
       </section>
 
-      <form onSubmit={submit} className="rounded-lg border border-white/10 bg-slate-950/76 p-6 shadow-2xl backdrop-blur">
+      <form onSubmit={submit} className="w-full min-w-0 rounded-lg border border-white/10 bg-slate-950/76 p-6 shadow-2xl backdrop-blur">
         <h2 className="text-2xl font-black">Forgot password</h2>
         {sent ? (
           <div className="mt-4 rounded-lg border border-emerald-300/30 bg-emerald-300/10 px-4 py-3 text-sm text-emerald-100">
@@ -49,7 +49,7 @@ export function ForgotPasswordPage() {
             {errorMessage}
           </div>
         ) : null}
-        <label className="mt-6 block">
+        <label className="mt-6 block min-w-0">
           <span className="text-sm font-bold text-slate-300">Email</span>
           <input
             required

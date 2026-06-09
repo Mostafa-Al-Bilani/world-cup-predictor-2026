@@ -57,7 +57,7 @@ export function AuthForm({ mode }) {
   };
 
   return (
-    <div className="mx-auto grid min-h-[72vh] w-full max-w-6xl items-center gap-8 px-4 py-12 sm:px-6 lg:grid-cols-[minmax(0,1fr)_440px] lg:px-8">
+    <div className="mx-auto grid min-h-[72vh] w-full max-w-6xl grid-cols-[minmax(0,1fr)] items-center gap-8 px-4 py-12 sm:px-6 lg:grid-cols-[minmax(0,1fr)_440px] lg:px-8">
       <div className="min-w-0">
         <p className="text-sm font-black uppercase tracking-[0.32em] text-emerald-300">
           {isRegister ? 'Join the prediction table' : 'Back to the pitch'}
@@ -89,7 +89,7 @@ export function AuthForm({ mode }) {
         ) : null}
         <div className="mt-6 space-y-4">
           {isRegister ? (
-            <label className="block">
+            <label className="block min-w-0">
               <span className="text-sm font-bold text-slate-300">Username</span>
               <input
                 required
@@ -103,7 +103,7 @@ export function AuthForm({ mode }) {
               />
             </label>
           ) : null}
-          <label className="block">
+          <label className="block min-w-0">
             <span className="text-sm font-bold text-slate-300">Email</span>
             <input
               required
