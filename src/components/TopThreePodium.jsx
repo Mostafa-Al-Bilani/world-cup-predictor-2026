@@ -1,5 +1,6 @@
 import { Crown, Medal, Trophy } from 'lucide-react';
 import { getAccuracy } from '../utils/predictions';
+import { getTopThreeUsers } from '../utils/leaderboard';
 
 const podiumStyles = [
   'md:order-2 md:-translate-y-6 border-gold-300/50 bg-gold-300/15',
@@ -8,7 +9,7 @@ const podiumStyles = [
 ];
 
 export function TopThreePodium({ users }) {
-  const topThree = users.slice(0, 3);
+  const topThree = getTopThreeUsers(users);
 
   if (!topThree.length) return null;
 

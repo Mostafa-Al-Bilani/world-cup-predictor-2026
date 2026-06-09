@@ -649,6 +649,38 @@ begin
 end;
 $$;
 
+create or replace function public.ensure_group_owner_membership()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  insert into public.group_members (group_id, user_id, role, status)
+  values (new.id, new.owner_id, 'owner', 'accepted')
+  on conflict (group_id, user_id) do update set
+    role = 'owner',
+    status = 'accepted',
+    updated_at = now();
+
+  return new;
+end;
+$$;
+
+drop trigger if exists groups_ensure_owner_membership on public.groups;
+create trigger groups_ensure_owner_membership
+after insert on public.groups
+for each row execute function public.ensure_group_owner_membership();
+
+insert into public.group_members (group_id, user_id, role, status)
+select id, owner_id, 'owner', 'accepted'
+from public.groups
+where owner_id is not null
+on conflict (group_id, user_id) do update set
+  role = 'owner',
+  status = 'accepted',
+  updated_at = now();
+
 create or replace function public.is_group_member(target_group_id uuid, check_user_id uuid default auth.uid())
 returns boolean
 language sql

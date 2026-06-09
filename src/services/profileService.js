@@ -1,6 +1,6 @@
 import { isDemoMode, supabase } from './supabaseClient';
 import { localStore } from './localStore';
-import { getAccuracy } from '../utils/predictions';
+import { normalizeLeaderboardUser, sortLeaderboardUsers } from '../utils/leaderboard';
 
 const recalculateProfile = (profile, store) => {
   const userPredictions = store.predictions.filter((prediction) => prediction.user_id === profile.id);
@@ -37,10 +37,7 @@ export const profileService = {
   async getLeaderboard() {
     if (isDemoMode) {
       const store = localStore.getStore();
-      return store.profiles
-        .map((profile) => recalculateProfile(profile, store))
-        .map((profile) => ({ ...profile, accuracy: getAccuracy(profile) }))
-        .sort((a, b) => b.total_points - a.total_points);
+      return sortLeaderboardUsers(store.profiles.map((profile) => recalculateProfile(profile, store)));
     }
 
     const { data, error } = await supabase
@@ -48,8 +45,21 @@ export const profileService = {
       .select('id, username, total_points, match_winner_points, exact_score_points, champion_points, correct_predictions, total_predictions, created_at')
       .order('total_points', { ascending: false })
       .order('correct_predictions', { ascending: false });
-    if (error) throw error;
-    return data.map((profile) => ({ ...profile, accuracy: getAccuracy(profile) }));
+
+    if (!error) return sortLeaderboardUsers(data ?? []);
+
+    if (/match_winner_points|exact_score_points|champion_points|column .* does not exist/i.test(error.message ?? '')) {
+      const { data: legacyData, error: legacyError } = await supabase
+        .from('leaderboard_profiles')
+        .select('id, username, total_points, correct_predictions, total_predictions, created_at')
+        .order('total_points', { ascending: false })
+        .order('correct_predictions', { ascending: false });
+
+      if (legacyError) throw legacyError;
+      return sortLeaderboardUsers((legacyData ?? []).map(normalizeLeaderboardUser));
+    }
+
+    throw error;
   },
   async getAdminStats() {
     if (isDemoMode) {
@@ -73,12 +83,14 @@ export const profileService = {
     if (matches.error) throw matches.error;
     if (predictions.error) throw predictions.error;
 
+    const matchRows = matches.data ?? [];
+
     return {
       totalUsers: profiles.count ?? 0,
       totalMatches: matches.count ?? 0,
       totalPredictions: predictions.count ?? 0,
-      finishedMatches: matches.data.filter((match) => match.status === 'finished').length,
-      upcomingMatches: matches.data.filter((match) => match.status === 'upcoming').length,
+      finishedMatches: matchRows.filter((match) => match.status === 'finished').length,
+      upcomingMatches: matchRows.filter((match) => match.status === 'upcoming').length,
     };
   },
 };

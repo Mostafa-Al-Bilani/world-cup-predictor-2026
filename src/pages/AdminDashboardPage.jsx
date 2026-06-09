@@ -3,6 +3,7 @@ import toast from 'react-hot-toast';
 import { Activity, CalendarCheck, CalendarClock, Goal, RefreshCw, Users } from 'lucide-react';
 import { AdminMatchForm } from '../components/AdminMatchForm';
 import { ConfirmationModal } from '../components/ConfirmationModal';
+import { EmptyState } from '../components/EmptyState';
 import { LoadingSpinner } from '../components/LoadingSpinner';
 import { StatusBadge } from '../components/StatusBadge';
 import { useAuth } from '../context/AuthContext';
@@ -25,6 +26,8 @@ export function AdminDashboardPage() {
   const [syncing, setSyncing] = useState(false);
   const [syncSummary, setSyncSummary] = useState(null);
   const [latestSyncLog, setLatestSyncLog] = useState(null);
+  const [matchSearch, setMatchSearch] = useState('');
+  const [matchStatusFilter, setMatchStatusFilter] = useState('all');
 
   const load = async () => {
     setLoading(true);
@@ -48,7 +51,18 @@ export function AdminDashboardPage() {
     load();
   }, []);
 
-  const visibleMatches = useMemo(() => matches.slice(0, 36), [matches]);
+  const visibleMatches = useMemo(() => {
+    const query = matchSearch.trim().toLowerCase();
+    return matches.filter((match) => {
+      const statusMatches = matchStatusFilter === 'all' || match.status === matchStatusFilter;
+      const queryMatches =
+        !query ||
+        [match.team_a, match.team_b, match.stage, match.venue, match.city, String(match.match_number ?? '')]
+          .filter(Boolean)
+          .some((value) => String(value).toLowerCase().includes(query));
+      return statusMatches && queryMatches;
+    });
+  }, [matchSearch, matchStatusFilter, matches]);
 
   const saveMatch = async (payload) => {
     setSaving(true);
@@ -167,10 +181,33 @@ export function AdminDashboardPage() {
         <div className="rounded-lg border border-white/10 bg-slate-950/72">
           <div className="border-b border-white/10 p-5">
             <h2 className="text-2xl font-black">Match management</h2>
-            <p className="mt-2 text-sm text-slate-400">Showing the next 36 rows for faster admin scanning.</p>
+            <p className="mt-2 text-sm text-slate-400">
+              Showing {visibleMatches.length} of {matches.length} matches. Use search and filters to scan the full fixture list.
+            </p>
+            <div className="mt-4 grid gap-3 sm:grid-cols-[minmax(0,1fr)_180px]">
+              <input
+                value={matchSearch}
+                onChange={(event) => setMatchSearch(event.target.value)}
+                className="rounded-lg border border-white/10 bg-white/5 px-4 py-3 text-sm text-white outline-none focus:border-emerald-300"
+                placeholder="Search team, venue, stage, or match number"
+              />
+              <select
+                value={matchStatusFilter}
+                onChange={(event) => setMatchStatusFilter(event.target.value)}
+                className="rounded-lg border border-white/10 bg-white/5 px-4 py-3 text-sm text-white outline-none focus:border-emerald-300"
+              >
+                <option value="all">All statuses</option>
+                <option value="upcoming">Upcoming</option>
+                <option value="live">Live</option>
+                <option value="halftime">Halftime</option>
+                <option value="finished">Finished</option>
+                <option value="postponed">Postponed</option>
+                <option value="cancelled">Cancelled</option>
+              </select>
+            </div>
           </div>
           <div className="max-h-[720px] divide-y divide-white/10 overflow-auto">
-            {visibleMatches.map((match) => (
+            {visibleMatches.length ? visibleMatches.map((match) => (
               <article key={match.id} className="p-5 transition hover:bg-white/[0.03]">
                 <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
                   <div>
@@ -210,7 +247,11 @@ export function AdminDashboardPage() {
                   </div>
                 </div>
               </article>
-            ))}
+            )) : (
+              <div className="p-5">
+                <EmptyState title="No matches found" description="Adjust the search text or status filter to find a fixture." />
+              </div>
+            )}
           </div>
         </div>
       </section>

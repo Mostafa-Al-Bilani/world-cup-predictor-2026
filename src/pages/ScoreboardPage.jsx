@@ -9,6 +9,7 @@ import { profileService } from '../services/profileService';
 import { syncLogService } from '../services/syncLogService';
 import { formatDateTime } from '../utils/date';
 import { getSafeErrorMessage } from '../utils/errors';
+import { hasScoredLeaderboardEntries, sortLeaderboardUsers } from '../utils/leaderboard';
 import { getAccuracy } from '../utils/predictions';
 
 export function ScoreboardPage() {
@@ -40,7 +41,7 @@ export function ScoreboardPage() {
 
   const rankedPlayers = useMemo(() => {
     const query = search.trim().toLowerCase();
-    return players
+    return sortLeaderboardUsers(players)
       .filter((player) => !query || player.username.toLowerCase().includes(query))
       .sort((a, b) => {
         const primary = sortBy === 'accuracy' ? getAccuracy(b) - getAccuracy(a) : (b[sortBy] ?? 0) - (a[sortBy] ?? 0);
@@ -52,6 +53,7 @@ export function ScoreboardPage() {
         return a.username.localeCompare(b.username);
       });
   }, [players, search, sortBy]);
+  const hasScoredRows = hasScoredLeaderboardEntries(rankedPlayers);
 
   if (loading) return <LoadingSpinner label="Loading scoreboard" />;
 
@@ -93,9 +95,18 @@ export function ScoreboardPage() {
 
       {rankedPlayers.length ? (
         <>
-          <div className="mt-10">
-            <TopThreePodium users={rankedPlayers} />
-          </div>
+          {!hasScoredRows ? (
+            <div className="mt-8">
+              <EmptyState
+                title="No scores yet"
+                description="Scores will appear after matches are completed and predictions are scored. Registered players are listed below."
+              />
+            </div>
+          ) : (
+            <div className="mt-10">
+              <TopThreePodium users={rankedPlayers} />
+            </div>
+          )}
           <div className="mt-8">
             <ScoreboardTable users={rankedPlayers} currentUserId={user?.id} />
           </div>
@@ -103,8 +114,8 @@ export function ScoreboardPage() {
       ) : (
         <div className="mt-8">
           <EmptyState
-            title="No points on the board yet"
-            description="Once finished matches are scored, ranked players will appear here with their prediction accuracy."
+            title="No scores yet"
+            description="Scores will appear after matches are completed and predictions are scored."
           />
         </div>
       )}

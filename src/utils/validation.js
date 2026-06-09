@@ -82,8 +82,8 @@ export function normalizePredictionScore(value, label) {
 }
 
 export function normalizePredictionScorePair(homeScore, awayScore) {
-  const predictedHomeScore = normalizePredictionScore(homeScore, 'Team A score');
-  const predictedAwayScore = normalizePredictionScore(awayScore, 'Team B score');
+  const predictedHomeScore = normalizePredictionScore(homeScore, 'Home team score');
+  const predictedAwayScore = normalizePredictionScore(awayScore, 'Away team score');
 
   if ((predictedHomeScore === null) !== (predictedAwayScore === null)) {
     throw new Error('Enter both scores or leave both score fields blank.');
@@ -152,13 +152,13 @@ export function normalizeMatchPayload(match) {
 
   const payload = {
     ...match,
-    team_a: normalizeText(match.team_a, { label: 'Team A', required: true, maxLength: limits.teamName }),
-    team_b: normalizeText(match.team_b, { label: 'Team B', required: true, maxLength: limits.teamName }),
+    team_a: normalizeText(match.team_a, { label: 'Home/listed team', required: true, maxLength: limits.teamName }),
+    team_b: normalizeText(match.team_b, { label: 'Away/opponent team', required: true, maxLength: limits.teamName }),
     match_date: matchDate.toISOString(),
     stage: normalizeText(match.stage, { label: 'Stage', required: true, maxLength: limits.stage }),
     status,
-    team_a_score: normalizeNonNegativeInteger(match.team_a_score, 'Team A score'),
-    team_b_score: normalizeNonNegativeInteger(match.team_b_score, 'Team B score'),
+    team_a_score: normalizeNonNegativeInteger(match.team_a_score, 'Home/listed score'),
+    team_b_score: normalizeNonNegativeInteger(match.team_b_score, 'Away/opponent score'),
     result,
     venue: normalizeText(match.venue, { label: 'Venue', maxLength: limits.venue }) || null,
     city: normalizeText(match.city, { label: 'City', maxLength: limits.city }) || null,

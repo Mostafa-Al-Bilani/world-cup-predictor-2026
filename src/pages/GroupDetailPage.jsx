@@ -40,7 +40,7 @@ export function GroupDetailPage() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const groupRow = await groupService.getGroup(groupId);
+      const groupRow = await groupService.getGroup(groupId, user?.id);
       if (!groupRow) {
         setGroup(null);
         return;
@@ -61,7 +61,7 @@ export function GroupDetailPage() {
     } finally {
       setLoading(false);
     }
-  }, [groupId]);
+  }, [groupId, user?.id]);
 
   useEffect(() => {
     load();
@@ -161,7 +161,7 @@ export function GroupDetailPage() {
       <main className="mx-auto grid min-h-[68vh] max-w-3xl place-items-center px-4 py-16 text-center sm:px-6 lg:px-8">
         <EmptyState
           title="Group not found"
-          description="This group may not exist, or you may need an invitation before you can view it."
+          description="This group may not exist, or your account may not have access to it."
         />
       </main>
     );

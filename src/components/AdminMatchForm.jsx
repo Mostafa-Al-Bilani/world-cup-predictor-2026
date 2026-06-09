@@ -71,8 +71,8 @@ export function AdminMatchForm({ match, onSubmit, onCancel, saving }) {
       </div>
 
       <div className="mt-5 grid gap-4 md:grid-cols-2">
-        <Field label="Team A" name="team_a" value={form.team_a} onChange={updateForm} maxLength={80} required />
-        <Field label="Team B" name="team_b" value={form.team_b} onChange={updateForm} maxLength={80} required />
+        <Field label="Home / listed team" name="team_a" value={form.team_a} onChange={updateForm} maxLength={80} required />
+        <Field label="Away / opponent team" name="team_b" value={form.team_b} onChange={updateForm} maxLength={80} required />
         <Field
           label={`Match date (${localTimeZone})`}
           name="match_date"
@@ -93,12 +93,12 @@ export function AdminMatchForm({ match, onSubmit, onCancel, saving }) {
         </Select>
         <Select label="Final result / winner" name="result" value={form.result} onChange={updateForm}>
           <option value="">Not set</option>
-          <option value="team_a">Team A wins</option>
+          <option value="team_a">Home/listed team wins</option>
           <option value="draw">Draw</option>
-          <option value="team_b">Team B wins</option>
+          <option value="team_b">Away/opponent team wins</option>
         </Select>
-        <Field label="Team A score" name="team_a_score" type="number" min="0" max="99" value={form.team_a_score} onChange={updateForm} />
-        <Field label="Team B score" name="team_b_score" type="number" min="0" max="99" value={form.team_b_score} onChange={updateForm} />
+        <Field label="Home/listed score" name="team_a_score" type="number" min="0" max="99" value={form.team_a_score} onChange={updateForm} />
+        <Field label="Away/opponent score" name="team_b_score" type="number" min="0" max="99" value={form.team_b_score} onChange={updateForm} />
         <Field label="Venue" name="venue" value={form.venue} onChange={updateForm} maxLength={120} />
         <Field label="City" name="city" value={form.city} onChange={updateForm} maxLength={80} />
         <Field label="Host country" name="host_country" value={form.host_country} onChange={updateForm} maxLength={80} />

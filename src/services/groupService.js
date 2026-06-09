@@ -1,16 +1,8 @@
-import { getAccuracy } from '../utils/predictions';
+import { canViewGroup, mergeOwnedGroupsWithMembershipRows, ownerMembershipForGroup } from '../utils/groups';
+import { sortLeaderboardUsers } from '../utils/leaderboard';
 import { normalizeGroupInput, normalizeInviteCode, normalizeProfileSearchQuery, validateUuid } from '../utils/validation';
 import { isDemoMode, supabase } from './supabaseClient';
 import { localStore } from './localStore';
-
-const sortLeaderboard = (players) =>
-  [...players].sort((a, b) => {
-    if ((b.total_points ?? 0) !== (a.total_points ?? 0)) return (b.total_points ?? 0) - (a.total_points ?? 0);
-    if ((b.correct_predictions ?? 0) !== (a.correct_predictions ?? 0)) {
-      return (b.correct_predictions ?? 0) - (a.correct_predictions ?? 0);
-    }
-    return a.username.localeCompare(b.username);
-  });
 
 const createInviteCode = () => crypto.randomUUID().slice(0, 8).replace(/-/g, '').toUpperCase();
 
@@ -38,20 +30,21 @@ const attachProfilesToMembers = (members, profiles) =>
       ...member,
       profile: {
         ...profile,
-        accuracy: getAccuracy(profile),
       },
     };
   });
 
 const readLocalGroups = (userId) => {
   const store = localStore.getStore();
-  return store.groupMembers
+  const membershipGroups = store.groupMembers
     .filter((member) => member.user_id === userId && member.status === 'accepted')
     .map((member) => {
       const group = store.groups.find((item) => item.id === member.group_id);
       return group ? { ...group, membership_role: member.role, membership_status: member.status } : null;
     })
     .filter(Boolean);
+  const ownedGroups = store.groups.filter((group) => group.owner_id === userId);
+  return mergeOwnedGroupsWithMembershipRows(membershipGroups, ownedGroups, userId);
 };
 
 const getCurrentUserId = async () => {
@@ -68,7 +61,7 @@ export const groupService = {
     if (isDemoMode) return readLocalGroups(validateUuid(userId, 'User ID'));
 
     const currentUserId = await getCurrentUserId();
-    const { data, error } = await supabase
+    const { data: membershipRows, error } = await supabase
       .from('group_members')
       .select('role,status,created_at,groups(id,name,description,owner_id,invite_code,created_at,updated_at)')
       .eq('user_id', currentUserId)
@@ -76,7 +69,16 @@ export const groupService = {
       .order('created_at', { ascending: false });
 
     if (error) throw error;
-    return (data ?? []).map(normalizeGroupRow).filter((group) => group.id);
+    const membershipGroups = (membershipRows ?? []).map(normalizeGroupRow).filter((group) => group.id);
+
+    const { data: ownedGroups, error: ownedError } = await supabase
+      .from('groups')
+      .select('id,name,description,owner_id,invite_code,created_at,updated_at')
+      .eq('owner_id', currentUserId)
+      .order('created_at', { ascending: false });
+
+    if (ownedError) throw ownedError;
+    return mergeOwnedGroupsWithMembershipRows(membershipGroups, ownedGroups ?? [], currentUserId);
   },
 
   async getPendingInvitations(userId) {
@@ -207,11 +209,14 @@ export const groupService = {
     return data;
   },
 
-  async getGroup(groupId) {
+  async getGroup(groupId, userId) {
     const normalizedGroupId = validateUuid(groupId, 'Group ID');
     if (isDemoMode) {
+      const normalizedUserId = validateUuid(userId, 'User ID');
       const store = localStore.getStore();
-      return store.groups.find((group) => group.id === normalizedGroupId) ?? null;
+      const group = store.groups.find((item) => item.id === normalizedGroupId) ?? null;
+      const members = store.groupMembers.filter((member) => member.group_id === normalizedGroupId);
+      return canViewGroup({ group, members, userId: normalizedUserId }) ? group : null;
     }
 
     const { data, error } = await supabase.from('groups').select('*').eq('id', normalizedGroupId).maybeSingle();
@@ -223,7 +228,11 @@ export const groupService = {
     const normalizedGroupId = validateUuid(groupId, 'Group ID');
     if (isDemoMode) {
       const store = localStore.getStore();
+      const group = store.groups.find((item) => item.id === normalizedGroupId);
       const members = store.groupMembers.filter((member) => member.group_id === normalizedGroupId && member.status === 'accepted');
+      if (group?.owner_id && !members.some((member) => member.user_id === group.owner_id)) {
+        members.unshift(ownerMembershipForGroup(group));
+      }
       return attachProfilesToMembers(members, store.profiles);
     }
 
@@ -249,7 +258,7 @@ export const groupService = {
 
   async getGroupLeaderboard(groupId) {
     const members = await this.getGroupMembers(groupId);
-    return sortLeaderboard(members.map((member) => ({ ...member.profile, role: member.role })));
+    return sortLeaderboardUsers(members.map((member) => ({ ...member.profile, role: member.role })));
   },
 
   async getGroupInvitations(groupId) {
