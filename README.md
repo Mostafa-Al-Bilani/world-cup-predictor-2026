@@ -268,7 +268,8 @@ The scheduled fixture sync workflow is separate from deployment. It does not reb
 
 ## Future Improvements
 
-- Add private friend leagues.
+- Use `SECURITY.md` and `docs/security-checklist.md` before each production deploy.
+- Add advanced group privacy controls and ownership transfer.
 - Add CSV export for admin scoring audits.
 - Add richer match detail pages.
 - Add prediction reminders before kickoff.
