@@ -2,7 +2,7 @@
 
 FIFA World Cup 2026 prediction website where users register, predict match outcomes, earn points for correct results, and compete on a public scoreboard.
 
-Live website placeholder: `https://<github-username>.github.io/<repository-name>/`
+Live website: [https://mostafa-al-bilani.github.io/world-cup-predictor-2026/](https://mostafa-al-bilani.github.io/world-cup-predictor-2026/)
 
 This is a fan project. It does not use official FIFA logos, mascots, protected graphics, or branding.
 
