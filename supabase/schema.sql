@@ -89,6 +89,59 @@ create table if not exists public.sync_logs (
 create index if not exists sync_logs_created_at_idx on public.sync_logs(created_at desc);
 create index if not exists sync_logs_status_idx on public.sync_logs(status, created_at desc);
 
+create table if not exists public.groups (
+  id uuid primary key default gen_random_uuid(),
+  name text not null,
+  description text,
+  owner_id uuid not null references public.profiles(id) on delete cascade,
+  invite_code text unique,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  constraint groups_name_not_blank check (length(trim(name)) > 0)
+);
+
+create table if not exists public.group_members (
+  id uuid primary key default gen_random_uuid(),
+  group_id uuid not null references public.groups(id) on delete cascade,
+  user_id uuid not null references public.profiles(id) on delete cascade,
+  role text not null default 'member',
+  status text not null default 'accepted',
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  constraint group_members_role_check check (role in ('owner', 'admin', 'member')),
+  constraint group_members_status_check check (status in ('accepted')),
+  constraint group_members_unique_user unique (group_id, user_id)
+);
+
+create table if not exists public.group_invitations (
+  id uuid primary key default gen_random_uuid(),
+  group_id uuid not null references public.groups(id) on delete cascade,
+  invited_user_id uuid not null references public.profiles(id) on delete cascade,
+  invited_by uuid not null references public.profiles(id) on delete cascade,
+  status text not null default 'pending',
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  constraint group_invitations_status_check check (status in ('pending', 'accepted', 'declined')),
+  constraint group_invitations_unique_user unique (group_id, invited_user_id)
+);
+
+alter table public.groups add column if not exists description text;
+alter table public.groups add column if not exists invite_code text;
+alter table public.groups add column if not exists updated_at timestamptz not null default now();
+alter table public.group_members add column if not exists updated_at timestamptz not null default now();
+alter table public.group_invitations add column if not exists updated_at timestamptz not null default now();
+
+create unique index if not exists groups_invite_code_unique_idx
+on public.groups(invite_code)
+where invite_code is not null;
+create index if not exists groups_owner_id_idx on public.groups(owner_id);
+create index if not exists group_members_group_id_idx on public.group_members(group_id);
+create index if not exists group_members_user_id_idx on public.group_members(user_id);
+create index if not exists group_members_status_idx on public.group_members(status);
+create index if not exists group_invitations_group_id_idx on public.group_invitations(group_id);
+create index if not exists group_invitations_invited_user_id_idx on public.group_invitations(invited_user_id);
+create index if not exists group_invitations_status_idx on public.group_invitations(status);
+
 create or replace function public.is_admin(check_user_id uuid default auth.uid())
 returns boolean
 language sql
@@ -137,10 +190,35 @@ begin
 end;
 $$;
 
+create or replace function public.set_updated_at()
+returns trigger
+language plpgsql
+as $$
+begin
+  new.updated_at = now();
+  return new;
+end;
+$$;
+
 drop trigger if exists predictions_set_updated_at on public.predictions;
 create trigger predictions_set_updated_at
 before update on public.predictions
 for each row execute function public.set_prediction_updated_at();
+
+drop trigger if exists groups_set_updated_at on public.groups;
+create trigger groups_set_updated_at
+before update on public.groups
+for each row execute function public.set_updated_at();
+
+drop trigger if exists group_members_set_updated_at on public.group_members;
+create trigger group_members_set_updated_at
+before update on public.group_members
+for each row execute function public.set_updated_at();
+
+drop trigger if exists group_invitations_set_updated_at on public.group_invitations;
+create trigger group_invitations_set_updated_at
+before update on public.group_invitations
+for each row execute function public.set_updated_at();
 
 create or replace function public.prevent_locked_prediction_change()
 returns trigger
@@ -235,6 +313,342 @@ begin
 end;
 $$;
 
+create or replace function public.generate_group_invite_code()
+returns text
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  code text;
+begin
+  loop
+    code := upper(encode(gen_random_bytes(4), 'hex'));
+    exit when not exists (
+      select 1 from public.groups
+      where invite_code = code
+    );
+  end loop;
+
+  return code;
+end;
+$$;
+
+create or replace function public.is_group_member(target_group_id uuid, check_user_id uuid default auth.uid())
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select exists (
+    select 1
+    from public.group_members
+    where group_id = target_group_id
+      and user_id = check_user_id
+      and status = 'accepted'
+  );
+$$;
+
+create or replace function public.can_manage_group(target_group_id uuid, check_user_id uuid default auth.uid())
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select exists (
+    select 1
+    from public.groups
+    where id = target_group_id
+      and owner_id = check_user_id
+  )
+  or exists (
+    select 1
+    from public.group_members
+    where group_id = target_group_id
+      and user_id = check_user_id
+      and status = 'accepted'
+      and role in ('owner', 'admin')
+  );
+$$;
+
+create or replace function public.search_profiles_for_invite(search_text text)
+returns table (
+  id uuid,
+  username text,
+  email text
+)
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select profiles.id, profiles.username, profiles.email
+  from public.profiles
+  where auth.uid() is not null
+    and profiles.id <> auth.uid()
+    and length(trim(search_text)) >= 2
+    and (
+      profiles.username ilike '%' || trim(search_text) || '%'
+      or profiles.email ilike '%' || trim(search_text) || '%'
+    )
+  order by profiles.username
+  limit 10;
+$$;
+
+create or replace function public.create_private_group(group_name text, group_description text default null)
+returns public.groups
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  created_group public.groups;
+begin
+  if auth.uid() is null then
+    raise exception 'You must be logged in to create a group';
+  end if;
+
+  insert into public.groups (name, description, owner_id, invite_code)
+  values (trim(group_name), nullif(trim(coalesce(group_description, '')), ''), auth.uid(), public.generate_group_invite_code())
+  returning * into created_group;
+
+  insert into public.group_members (group_id, user_id, role, status)
+  values (created_group.id, auth.uid(), 'owner', 'accepted')
+  on conflict (group_id, user_id) do update set
+    role = 'owner',
+    status = 'accepted',
+    updated_at = now();
+
+  return created_group;
+end;
+$$;
+
+create or replace function public.join_group_by_invite_code(target_invite_code text)
+returns public.groups
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  target_group public.groups;
+begin
+  if auth.uid() is null then
+    raise exception 'You must be logged in to join a group';
+  end if;
+
+  select *
+  into target_group
+  from public.groups
+  where invite_code = upper(trim(target_invite_code));
+
+  if target_group.id is null then
+    raise exception 'Invalid invite code';
+  end if;
+
+  insert into public.group_members (group_id, user_id, role, status)
+  values (target_group.id, auth.uid(), 'member', 'accepted')
+  on conflict (group_id, user_id) do update set
+    status = 'accepted',
+    updated_at = now();
+
+  update public.group_invitations
+  set status = 'accepted', updated_at = now()
+  where group_id = target_group.id
+    and invited_user_id = auth.uid()
+    and status = 'pending';
+
+  return target_group;
+end;
+$$;
+
+create or replace function public.invite_group_member(target_group_id uuid, target_user_id uuid)
+returns public.group_invitations
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  invitation public.group_invitations;
+begin
+  if not public.can_manage_group(target_group_id, auth.uid()) then
+    raise exception 'Only group owners and admins can invite members';
+  end if;
+
+  if exists (
+    select 1 from public.group_members
+    where group_id = target_group_id
+      and user_id = target_user_id
+      and status = 'accepted'
+  ) then
+    raise exception 'User is already a member of this group';
+  end if;
+
+  insert into public.group_invitations (group_id, invited_user_id, invited_by, status)
+  values (target_group_id, target_user_id, auth.uid(), 'pending')
+  on conflict (group_id, invited_user_id) do update set
+    invited_by = auth.uid(),
+    status = 'pending',
+    updated_at = now()
+  returning * into invitation;
+
+  return invitation;
+end;
+$$;
+
+create or replace function public.respond_group_invitation(target_invitation_id uuid, response_status text)
+returns public.group_invitations
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  invitation public.group_invitations;
+begin
+  if response_status not in ('accepted', 'declined') then
+    raise exception 'Invitation response must be accepted or declined';
+  end if;
+
+  select *
+  into invitation
+  from public.group_invitations
+  where id = target_invitation_id
+    and invited_user_id = auth.uid();
+
+  if invitation.id is null then
+    raise exception 'Invitation not found';
+  end if;
+
+  update public.group_invitations
+  set status = response_status, updated_at = now()
+  where id = target_invitation_id
+  returning * into invitation;
+
+  if response_status = 'accepted' then
+    insert into public.group_members (group_id, user_id, role, status)
+    values (invitation.group_id, auth.uid(), 'member', 'accepted')
+    on conflict (group_id, user_id) do update set
+      status = 'accepted',
+      updated_at = now();
+  end if;
+
+  return invitation;
+end;
+$$;
+
+create or replace function public.remove_group_member(target_group_id uuid, target_user_id uuid)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if not public.can_manage_group(target_group_id, auth.uid()) then
+    raise exception 'Only group owners and admins can remove members';
+  end if;
+
+  if exists (
+    select 1 from public.groups
+    where id = target_group_id
+      and owner_id = target_user_id
+  ) then
+    raise exception 'The group owner cannot be removed';
+  end if;
+
+  delete from public.group_members
+  where group_id = target_group_id
+    and user_id = target_user_id;
+end;
+$$;
+
+create or replace function public.leave_group(target_group_id uuid)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if exists (
+    select 1 from public.groups
+    where id = target_group_id
+      and owner_id = auth.uid()
+  ) then
+    raise exception 'Group owners must delete the group or transfer ownership before leaving';
+  end if;
+
+  delete from public.group_members
+  where group_id = target_group_id
+    and user_id = auth.uid();
+end;
+$$;
+
+create or replace function public.regenerate_group_invite_code(target_group_id uuid)
+returns public.groups
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  target_group public.groups;
+begin
+  if not public.can_manage_group(target_group_id, auth.uid()) then
+    raise exception 'Only group owners and admins can regenerate invite codes';
+  end if;
+
+  update public.groups
+  set invite_code = public.generate_group_invite_code()
+  where id = target_group_id
+  returning * into target_group;
+
+  return target_group;
+end;
+$$;
+
+create or replace function public.update_group_details(target_group_id uuid, group_name text, group_description text default null)
+returns public.groups
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  target_group public.groups;
+begin
+  if not public.can_manage_group(target_group_id, auth.uid()) then
+    raise exception 'Only group owners and admins can update groups';
+  end if;
+
+  update public.groups
+  set
+    name = trim(group_name),
+    description = nullif(trim(coalesce(group_description, '')), '')
+  where id = target_group_id
+  returning * into target_group;
+
+  return target_group;
+end;
+$$;
+
+create or replace function public.delete_private_group(target_group_id uuid)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if not exists (
+    select 1 from public.groups
+    where id = target_group_id
+      and owner_id = auth.uid()
+  ) then
+    raise exception 'Only the group owner can delete this group';
+  end if;
+
+  delete from public.groups
+  where id = target_group_id;
+end;
+$$;
+
 create or replace view public.leaderboard_profiles as
 select
   id,
@@ -266,6 +680,9 @@ alter table public.profiles enable row level security;
 alter table public.matches enable row level security;
 alter table public.predictions enable row level security;
 alter table public.sync_logs enable row level security;
+alter table public.groups enable row level security;
+alter table public.group_members enable row level security;
+alter table public.group_invitations enable row level security;
 
 drop policy if exists "Users can read their own profile" on public.profiles;
 create policy "Users can read their own profile"
@@ -353,8 +770,87 @@ create policy "Admins can insert sync logs"
 on public.sync_logs for insert
 with check (public.is_admin());
 
+drop policy if exists "Accepted members can read groups" on public.groups;
+create policy "Accepted members can read groups"
+on public.groups for select
+using (owner_id = auth.uid() or public.is_group_member(id));
+
+drop policy if exists "Authenticated users can create owned groups" on public.groups;
+create policy "Authenticated users can create owned groups"
+on public.groups for insert
+with check (owner_id = auth.uid());
+
+drop policy if exists "Group managers can update groups" on public.groups;
+create policy "Group managers can update groups"
+on public.groups for update
+using (public.can_manage_group(id))
+with check (public.can_manage_group(id));
+
+drop policy if exists "Group owners can delete groups" on public.groups;
+create policy "Group owners can delete groups"
+on public.groups for delete
+using (owner_id = auth.uid());
+
+drop policy if exists "Members can read group memberships" on public.group_members;
+create policy "Members can read group memberships"
+on public.group_members for select
+using (user_id = auth.uid() or public.is_group_member(group_id));
+
+drop policy if exists "Group managers can insert memberships" on public.group_members;
+create policy "Group managers can insert memberships"
+on public.group_members for insert
+with check (public.can_manage_group(group_id));
+
+drop policy if exists "Group managers can update memberships" on public.group_members;
+create policy "Group managers can update memberships"
+on public.group_members for update
+using (public.can_manage_group(group_id))
+with check (public.can_manage_group(group_id));
+
+drop policy if exists "Group managers can delete memberships" on public.group_members;
+create policy "Group managers can delete memberships"
+on public.group_members for delete
+using (public.can_manage_group(group_id));
+
+drop policy if exists "Users and managers can read invitations" on public.group_invitations;
+create policy "Users and managers can read invitations"
+on public.group_invitations for select
+using (invited_user_id = auth.uid() or public.can_manage_group(group_id));
+
+drop policy if exists "Group managers can create invitations" on public.group_invitations;
+create policy "Group managers can create invitations"
+on public.group_invitations for insert
+with check (public.can_manage_group(group_id));
+
+drop policy if exists "Invitees and managers can update invitations" on public.group_invitations;
+create policy "Invitees and managers can update invitations"
+on public.group_invitations for update
+using (invited_user_id = auth.uid() or public.can_manage_group(group_id))
+with check (invited_user_id = auth.uid() or public.can_manage_group(group_id));
+
+drop policy if exists "Group managers can delete invitations" on public.group_invitations;
+create policy "Group managers can delete invitations"
+on public.group_invitations for delete
+using (public.can_manage_group(group_id));
+
 grant select on public.leaderboard_profiles to anon, authenticated;
 grant select on public.latest_successful_sync to anon, authenticated;
 grant select, insert on public.sync_logs to authenticated;
 grant execute on function public.recalculate_match_points(uuid) to authenticated;
 grant execute on function public.recalculate_match_points(uuid) to service_role;
+revoke insert, update, delete on public.groups from authenticated;
+revoke insert, update, delete on public.group_members from authenticated;
+revoke insert, update, delete on public.group_invitations from authenticated;
+grant select on public.groups to authenticated;
+grant select on public.group_members to authenticated;
+grant select on public.group_invitations to authenticated;
+grant execute on function public.search_profiles_for_invite(text) to authenticated;
+grant execute on function public.create_private_group(text, text) to authenticated;
+grant execute on function public.join_group_by_invite_code(text) to authenticated;
+grant execute on function public.invite_group_member(uuid, uuid) to authenticated;
+grant execute on function public.respond_group_invitation(uuid, text) to authenticated;
+grant execute on function public.remove_group_member(uuid, uuid) to authenticated;
+grant execute on function public.leave_group(uuid) to authenticated;
+grant execute on function public.regenerate_group_invite_code(uuid) to authenticated;
+grant execute on function public.update_group_details(uuid, text, text) to authenticated;
+grant execute on function public.delete_private_group(uuid) to authenticated;
