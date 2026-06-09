@@ -25,12 +25,12 @@ export function Navbar() {
 
   return (
     <header className="sticky top-0 z-40 border-b border-white/10 bg-slate-950/82 backdrop-blur-xl">
-      <nav className="mx-auto flex max-w-7xl items-center justify-between px-4 py-4 sm:px-6 lg:px-8">
-        <Link to="/" className="flex min-w-0 items-center gap-3">
+      <nav className="mx-auto flex w-full max-w-7xl items-center justify-between px-4 py-4 sm:px-6 lg:px-8">
+        <Link to="/" className="flex min-w-0 flex-1 items-center gap-3 lg:flex-none">
           <span className="grid h-10 w-10 place-items-center rounded-lg border border-gold-300/40 bg-gold-300/15 text-gold-300 shadow-gold">
             <Trophy size={20} />
           </span>
-          <span>
+          <span className="min-w-0">
             <span className="block text-sm font-black uppercase tracking-[0.22em] text-white">
               CupPredict
             </span>
@@ -87,7 +87,7 @@ export function Navbar() {
 
         <button
           type="button"
-          className="ml-auto grid h-10 w-10 shrink-0 place-items-center rounded-lg border border-white/20 bg-white/5 text-white lg:hidden"
+          className="ml-3 grid h-10 w-10 shrink-0 place-items-center rounded-lg border border-white/20 bg-white/5 text-white lg:hidden"
           onClick={() => setOpen((value) => !value)}
           aria-label="Toggle navigation"
         >
