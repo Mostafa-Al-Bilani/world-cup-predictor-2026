@@ -1,7 +1,20 @@
-export const formatDateTime = (value) =>
+const DATE_TIME_OPTIONS = {
+  year: 'numeric',
+  month: 'short',
+  day: 'numeric',
+  hour: 'numeric',
+  minute: '2-digit',
+  timeZoneName: 'short',
+};
+
+export const getUserTimeZone = () => Intl.DateTimeFormat().resolvedOptions().timeZone ?? 'local time';
+
+export const formatDateTime = (value) => new Intl.DateTimeFormat(undefined, DATE_TIME_OPTIONS).format(new Date(value));
+
+export const formatDateTimeUtc = (value) =>
   new Intl.DateTimeFormat(undefined, {
-    dateStyle: 'medium',
-    timeStyle: 'short',
+    ...DATE_TIME_OPTIONS,
+    timeZone: 'UTC',
   }).format(new Date(value));
 
 export const formatDate = (value) =>
@@ -25,3 +38,20 @@ export const getTimeRemaining = (value) => {
 };
 
 export const isMatchLocked = (match) => new Date(match.match_date).getTime() <= Date.now();
+
+export const toDateTimeLocalInput = (value) => {
+  if (!value) return '';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+
+  const offset = date.getTimezoneOffset();
+  const localDate = new Date(date.getTime() - offset * 60 * 1000);
+  return localDate.toISOString().slice(0, 16);
+};
+
+export const fromDateTimeLocalInput = (value) => {
+  if (!value) return null;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+  return date.toISOString();
+};

@@ -19,6 +19,7 @@ This is a fan project. It does not use official FIFA logos, mascots, protected g
 - Admin-only Sync Fixtures button using openfootball World Cup 2026 JSON data.
 - Scheduled server-side fixture/result sync using API-Football as the primary provider and openfootball as fallback.
 - Persistent fixture sync logs with admin status summaries and public scoreboard last-updated text.
+- Timezone-aware kickoff display with admin local-time editing and UTC Supabase storage.
 - GitHub Pages-safe routing through `HashRouter`.
 - Official GitHub Pages deployment workflow using Pages artifacts.
 
@@ -97,6 +98,10 @@ The schema creates:
 RLS is enabled on all core tables. Users can manage only their own unlocked predictions. Admins can manage matches and recalculate points.
 
 If you already ran an older schema, rerun the latest `supabase/schema.sql`. It uses `add column if not exists` and `create table if not exists` for the new sync fields/logs.
+
+## Timezone Handling
+
+Supabase stores `matches.match_date` as `timestamptz` in UTC. Public pages display kickoff times in the visitor's local timezone with a timezone abbreviation. The Admin Match form uses the admin browser's local timezone for `datetime-local` editing and shows the UTC value that will be saved.
 
 ## Fixture Sync
 

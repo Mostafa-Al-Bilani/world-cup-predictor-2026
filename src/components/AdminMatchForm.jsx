@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { formatDateTimeUtc, fromDateTimeLocalInput, getUserTimeZone, toDateTimeLocalInput } from '../utils/date';
 import { getMatchResultFromScores } from '../utils/predictions';
 
 const blankMatch = {
@@ -15,16 +16,10 @@ const blankMatch = {
   host_country: '',
 };
 
-const toInputDate = (value) => {
-  if (!value) return '';
-  const date = new Date(value);
-  const offset = date.getTimezoneOffset();
-  const localDate = new Date(date.getTime() - offset * 60 * 1000);
-  return localDate.toISOString().slice(0, 16);
-};
-
 export function AdminMatchForm({ match, onSubmit, onCancel, saving }) {
   const [form, setForm] = useState(blankMatch);
+  const savedUtcPreview = fromDateTimeLocalInput(form.match_date);
+  const localTimeZone = getUserTimeZone();
 
   useEffect(() => {
     if (!match) {
@@ -34,7 +29,7 @@ export function AdminMatchForm({ match, onSubmit, onCancel, saving }) {
     setForm({
       ...blankMatch,
       ...match,
-      match_date: toInputDate(match.match_date),
+      match_date: toDateTimeLocalInput(match.match_date),
       team_a_score: match.team_a_score ?? '',
       team_b_score: match.team_b_score ?? '',
       result: match.result ?? '',
@@ -57,7 +52,7 @@ export function AdminMatchForm({ match, onSubmit, onCancel, saving }) {
     onSubmit({
       ...form,
       id: match?.id,
-      match_date: new Date(form.match_date).toISOString(),
+      match_date: fromDateTimeLocalInput(form.match_date),
       team_a_score: form.team_a_score === '' ? null : Number(form.team_a_score),
       team_b_score: form.team_b_score === '' ? null : Number(form.team_b_score),
       result: form.result || null,
@@ -78,7 +73,15 @@ export function AdminMatchForm({ match, onSubmit, onCancel, saving }) {
       <div className="mt-5 grid gap-4 md:grid-cols-2">
         <Field label="Team A" name="team_a" value={form.team_a} onChange={updateForm} required />
         <Field label="Team B" name="team_b" value={form.team_b} onChange={updateForm} required />
-        <Field label="Match date" name="match_date" type="datetime-local" value={form.match_date} onChange={updateForm} required />
+        <Field
+          label={`Match date (${localTimeZone})`}
+          name="match_date"
+          type="datetime-local"
+          value={form.match_date}
+          onChange={updateForm}
+          helpText={savedUtcPreview ? `Saved as ${formatDateTimeUtc(savedUtcPreview)} in Supabase.` : 'Choose a local kickoff time.'}
+          required
+        />
         <Field label="Stage / Group" name="stage" value={form.stage} onChange={updateForm} required />
         <Select label="Status" name="status" value={form.status} onChange={updateForm}>
           <option value="upcoming">Upcoming</option>
@@ -109,7 +112,7 @@ export function AdminMatchForm({ match, onSubmit, onCancel, saving }) {
   );
 }
 
-function Field({ label, name, value, onChange, type = 'text', ...props }) {
+function Field({ label, name, value, onChange, type = 'text', helpText, ...props }) {
   return (
     <label className="block">
       <span className="text-sm font-bold text-slate-300">{label}</span>
@@ -121,6 +124,7 @@ function Field({ label, name, value, onChange, type = 'text', ...props }) {
         onChange={onChange}
         className="mt-2 w-full rounded-lg border border-white/10 bg-white/5 px-4 py-3 text-sm text-white outline-none focus:border-emerald-300"
       />
+      {helpText ? <span className="mt-2 block text-xs leading-5 text-slate-400">{helpText}</span> : null}
     </label>
   );
 }
