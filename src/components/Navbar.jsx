@@ -21,6 +21,8 @@ export function Navbar() {
       isActive ? 'bg-white text-slate-950' : 'text-slate-200 hover:bg-white/10 hover:text-white',
     );
 
+  const authLinkState = { scrollToAuth: true };
+
   return (
     <header className="sticky top-0 z-40 border-b border-white/10 bg-slate-950/82 backdrop-blur-xl">
       <nav className="mx-auto flex max-w-7xl items-center justify-between px-4 py-4 sm:px-6 lg:px-8">
@@ -65,12 +67,17 @@ export function Navbar() {
             </>
           ) : (
             <>
-              <Link className="rounded-full px-4 py-2 text-sm font-bold text-slate-200 hover:text-white" to="/login">
+              <Link
+                className="rounded-full px-4 py-2 text-sm font-bold text-slate-200 hover:text-white"
+                to="/login"
+                state={authLinkState}
+              >
                 Log in
               </Link>
               <Link
                 className="rounded-full bg-emerald-300 px-4 py-2 text-sm font-black text-emerald-950 shadow-glow transition hover:bg-white"
                 to="/register"
+                state={authLinkState}
               >
                 Register
               </Link>
@@ -117,10 +124,20 @@ export function Navbar() {
                 </button>
               ) : (
                 <div className="grid grid-cols-2 gap-2">
-                  <Link className="rounded-full border border-white/15 px-4 py-2 text-center text-sm font-bold" to="/login">
+                  <Link
+                    className="rounded-full border border-white/15 px-4 py-2 text-center text-sm font-bold"
+                    to="/login"
+                    state={authLinkState}
+                    onClick={() => setOpen(false)}
+                  >
                     Log in
                   </Link>
-                  <Link className="rounded-full bg-emerald-300 px-4 py-2 text-center text-sm font-black text-emerald-950" to="/register">
+                  <Link
+                    className="rounded-full bg-emerald-300 px-4 py-2 text-center text-sm font-black text-emerald-950"
+                    to="/register"
+                    state={authLinkState}
+                    onClick={() => setOpen(false)}
+                  >
                     Register
                   </Link>
                 </div>

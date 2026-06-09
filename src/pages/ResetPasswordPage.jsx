@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import toast from 'react-hot-toast';
 import { Link, useNavigate } from 'react-router-dom';
+import { PasswordField } from '../components/PasswordField';
 import { useAuth } from '../context/AuthContext';
 import { authService } from '../services/authService';
 
@@ -78,32 +79,21 @@ export function ResetPasswordPage() {
           </div>
         ) : null}
         <div className="mt-6 space-y-4">
-          <label className="block">
-            <span className="text-sm font-bold text-slate-300">New password</span>
-            <input
-              required
-              minLength={6}
-              type="password"
-              name="password"
-              value={form.password}
-              onChange={updateForm}
-              className="mt-2 w-full rounded-lg border border-white/10 bg-white/5 px-4 py-3 text-white outline-none transition focus:border-emerald-300"
-              placeholder="At least 6 characters"
-            />
-          </label>
-          <label className="block">
-            <span className="text-sm font-bold text-slate-300">Confirm password</span>
-            <input
-              required
-              minLength={6}
-              type="password"
-              name="confirmPassword"
-              value={form.confirmPassword}
-              onChange={updateForm}
-              className="mt-2 w-full rounded-lg border border-white/10 bg-white/5 px-4 py-3 text-white outline-none transition focus:border-emerald-300"
-              placeholder="Repeat the new password"
-            />
-          </label>
+          <PasswordField
+            label="New password"
+            name="password"
+            value={form.password}
+            onChange={updateForm}
+            autoComplete="new-password"
+          />
+          <PasswordField
+            label="Confirm password"
+            name="confirmPassword"
+            value={form.confirmPassword}
+            onChange={updateForm}
+            autoComplete="new-password"
+            placeholder="Repeat the new password"
+          />
         </div>
         <button
           disabled={saving || loading}

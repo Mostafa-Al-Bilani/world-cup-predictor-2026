@@ -34,8 +34,13 @@ export function ScoreboardPage() {
     return players
       .filter((player) => !query || player.username.toLowerCase().includes(query))
       .sort((a, b) => {
-        if (sortBy === 'accuracy') return getAccuracy(b) - getAccuracy(a);
-        return (b[sortBy] ?? 0) - (a[sortBy] ?? 0);
+        const primary = sortBy === 'accuracy' ? getAccuracy(b) - getAccuracy(a) : (b[sortBy] ?? 0) - (a[sortBy] ?? 0);
+        if (primary !== 0) return primary;
+        if ((b.total_points ?? 0) !== (a.total_points ?? 0)) return (b.total_points ?? 0) - (a.total_points ?? 0);
+        if ((b.correct_predictions ?? 0) !== (a.correct_predictions ?? 0)) {
+          return (b.correct_predictions ?? 0) - (a.correct_predictions ?? 0);
+        }
+        return a.username.localeCompare(b.username);
       });
   }, [players, search, sortBy]);
 

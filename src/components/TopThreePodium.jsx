@@ -13,18 +13,18 @@ export function TopThreePodium({ users }) {
   if (!topThree.length) return null;
 
   return (
-    <section className="grid gap-4 md:grid-cols-3 md:items-end">
+    <section className="flex flex-col gap-4 md:flex-row md:items-end md:justify-center" aria-label="Top three players">
       {topThree.map((user, index) => (
         <article
           key={user.id}
-          className={`rounded-lg border p-5 text-center shadow-xl ${podiumStyles[index]}`}
+          className={`w-full rounded-lg border p-5 text-center shadow-xl md:max-w-sm md:flex-1 ${podiumStyles[index]}`}
         >
           <div className="mx-auto grid h-14 w-14 place-items-center rounded-lg bg-slate-950/80 text-gold-300">
             {index === 0 ? <Crown size={28} /> : index === 1 ? <Trophy size={26} /> : <Medal size={26} />}
           </div>
           <p className="mt-4 text-sm font-black uppercase tracking-[0.3em] text-slate-300">Rank #{index + 1}</p>
           <h3 className="mt-2 truncate text-2xl font-black text-white">{user.username}</h3>
-          <div className="mt-5 grid grid-cols-3 gap-2 text-sm">
+          <div className="mt-5 grid gap-2 text-sm lg:grid-cols-3">
             <Metric label="Points" value={user.total_points} />
             <Metric label="Correct" value={user.correct_predictions} />
             <Metric label="Accuracy" value={`${getAccuracy(user)}%`} />

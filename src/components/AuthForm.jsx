@@ -1,6 +1,7 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
+import { PasswordField } from './PasswordField';
 import { useAuth } from '../context/AuthContext';
 
 export function AuthForm({ mode }) {
@@ -10,7 +11,24 @@ export function AuthForm({ mode }) {
   const [form, setForm] = useState({ username: '', email: '', password: '' });
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
+  const formRef = useRef(null);
+  const firstInputRef = useRef(null);
   const isRegister = mode === 'register';
+
+  useEffect(() => {
+    const shouldFocusAuth =
+      location.state?.scrollToAuth ||
+      window.matchMedia('(max-width: 1023px)').matches;
+
+    if (!shouldFocusAuth) return undefined;
+
+    const frameId = window.requestAnimationFrame(() => {
+      formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      window.setTimeout(() => firstInputRef.current?.focus({ preventScroll: true }), 350);
+    });
+
+    return () => window.cancelAnimationFrame(frameId);
+  }, [location.state?.scrollToAuth, mode]);
 
   const updateForm = (event) => {
     setForm((value) => ({ ...value, [event.target.name]: event.target.value }));
@@ -58,7 +76,11 @@ export function AuthForm({ mode }) {
         ) : null}
       </div>
 
-      <form onSubmit={submit} className="rounded-lg border border-white/10 bg-slate-950/76 p-6 shadow-2xl backdrop-blur">
+      <form
+        ref={formRef}
+        onSubmit={submit}
+        className="scroll-mt-24 rounded-lg border border-white/10 bg-slate-950/76 p-6 shadow-2xl backdrop-blur"
+      >
         <h2 className="text-2xl font-black">{isRegister ? 'Register' : 'Log in'}</h2>
         {errorMessage ? (
           <div className="mt-4 rounded-lg border border-rose-300/30 bg-rose-300/10 px-4 py-3 text-sm text-rose-100">
@@ -74,6 +96,8 @@ export function AuthForm({ mode }) {
                 name="username"
                 value={form.username}
                 onChange={updateForm}
+                ref={isRegister ? firstInputRef : undefined}
+                autoComplete="username"
                 className="mt-2 w-full rounded-lg border border-white/10 bg-white/5 px-4 py-3 text-white outline-none transition focus:border-emerald-300"
                 placeholder="goldenboot"
               />
@@ -87,23 +111,19 @@ export function AuthForm({ mode }) {
               name="email"
               value={form.email}
               onChange={updateForm}
+              ref={isRegister ? undefined : firstInputRef}
+              autoComplete="email"
               className="mt-2 w-full rounded-lg border border-white/10 bg-white/5 px-4 py-3 text-white outline-none transition focus:border-emerald-300"
               placeholder="you@example.com"
             />
           </label>
-          <label className="block">
-            <span className="text-sm font-bold text-slate-300">Password</span>
-            <input
-              required
-              minLength={6}
-              type="password"
-              name="password"
-              value={form.password}
-              onChange={updateForm}
-              className="mt-2 w-full rounded-lg border border-white/10 bg-white/5 px-4 py-3 text-white outline-none transition focus:border-emerald-300"
-              placeholder="At least 6 characters"
-            />
-          </label>
+          <PasswordField
+            label="Password"
+            name="password"
+            value={form.password}
+            onChange={updateForm}
+            autoComplete={isRegister ? 'new-password' : 'current-password'}
+          />
         </div>
         <button
           disabled={loading}
