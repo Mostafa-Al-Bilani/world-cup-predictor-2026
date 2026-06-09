@@ -1,6 +1,6 @@
 # World Cup Predictor 2026
 
-FIFA World Cup 2026 prediction website where users register, predict match outcomes, earn points for correct results, and compete on a public scoreboard.
+FIFA World Cup 2026 prediction website where users register, predict match outcomes and exact scores, pick a tournament champion, earn points, and compete on public or private leaderboards.
 
 Live website: [https://mostafa-al-bilani.github.io/world-cup-predictor-2026/](https://mostafa-al-bilani.github.io/world-cup-predictor-2026/)
 
@@ -11,14 +11,15 @@ This is a fan project. It does not use official FIFA logos, mascots, protected g
 - Supabase email/password registration and login.
 - Automatic profile rows after registration.
 - Match browsing with search, stage filters, status filters, and responsive fixture cards.
-- One prediction per user per match with duplicate prevention.
-- Prediction locking after kickoff or when a match is no longer upcoming.
-- Public Supabase-backed scoreboard with top-three podium, rank table, accuracy, and current-user highlight.
-- My Predictions dashboard with status filters and earned points.
+- One prediction per user per match with result, optional exact score, duplicate prevention, and UTC kickoff locking.
+- Group-stage draw predictions and knockout final-winner predictions.
+- Locked World Cup champion pick worth 3 tournament points.
+- Public Supabase-backed scoreboard with top-three podium, rank table, point breakdown, accuracy, and current-user highlight.
+- My Predictions dashboard with status filters, exact score picks, champion pick, and earned points.
 - Private friend groups with invite codes, invitations, members-only leaderboards, and owner controls.
 - Admin-only dashboard for adding, editing, deleting, finishing, and recalculating matches.
 - Admin-only Sync Fixtures button using openfootball World Cup 2026 JSON data.
-- Scheduled server-side fixture/result sync using API-Football as the primary provider and openfootball as fallback.
+- Scheduled server-side fixture/result/live-status sync using API-Football as the primary provider and openfootball as fallback.
 - Persistent fixture sync logs with admin status summaries and public scoreboard last-updated text.
 - Timezone-aware kickoff display with admin local-time editing and UTC Supabase storage.
 - GitHub Pages-safe routing through `HashRouter`.
@@ -71,6 +72,12 @@ Build check:
 npm run build
 ```
 
+Run lightweight tests:
+
+```bash
+npm run test
+```
+
 ## Supabase Setup
 
 1. Create a Supabase project.
@@ -89,17 +96,20 @@ where email = 'your-email@example.com';
 The schema creates:
 
 - `profiles`: user profile, admin flag, and scoreboard totals.
-- `matches`: fixtures, status, scores, result, venue, and external fixture references.
-- `predictions`: one prediction per user per match.
+- `matches`: fixtures, live/final status, scores, result, venue, elapsed time, halftime score, and external fixture references.
+- `predictions`: one prediction per user per match, including result pick, optional exact score, and trusted point fields.
+- `world_cup_winner_predictions`: one locked champion pick per user.
 - `sync_logs`: provider sync audit trail for scheduled and manual fixture syncs.
 - `groups`: private prediction groups with owners and invite codes.
 - `group_members`: accepted group members and roles.
 - `group_invitations`: pending, accepted, and declined user invitations.
 - `leaderboard_profiles`: public scoreboard view without profile emails.
 - `latest_successful_sync`: public-safe view used for scoreboard last-updated text.
-- `recalculate_match_points(target_match_id uuid)`: admin-only point recalculation.
+- `recalculate_match_points(target_match_id uuid)`: admin/service-role point recalculation for finished matches.
+- `recalculate_champion_points()`: admin/service-role champion point recalculation after the final.
+- `set_world_cup_winner_prediction(team_name text)`: authenticated champion-pick RPC that locks the pick after selection.
 
-RLS is enabled on all core tables. Users can manage only their own unlocked predictions. Admins can manage matches and recalculate points.
+RLS is enabled on all core tables. Users can manage only their own unlocked predictions. Users cannot update trusted point fields from the browser. Admins and service-role sync logic can manage matches and recalculate points.
 
 Private group data is protected with RLS:
 
@@ -109,7 +119,37 @@ Private group data is protected with RLS:
 - writes use Supabase RPC functions for create, join, invite, accept/decline, leave, remove, update, regenerate code, and delete;
 - regular users cannot add themselves to a private group without a valid invite code or invitation.
 
-If you already ran an older schema, rerun the latest `supabase/schema.sql`. It uses `add column if not exists` and `create table if not exists` for the new sync fields/logs and private group tables.
+If you already ran an older schema, rerun the latest `supabase/schema.sql`. It uses `add column if not exists` and `create table if not exists` for the new sync fields/logs, score prediction fields, champion prediction table, and private group tables.
+
+## Scoring Rules
+
+Each match can award up to 2 points:
+
+- Correct match winner/result: `1` point.
+- Exact score bonus: `1` extra point.
+- Winner correct but score wrong or missing: `1` point.
+- Winner wrong: `0` points, even if one score number matches.
+- Exact score bonus requires both predicted score numbers to match the final score exactly.
+
+Existing predictions without exact score fields remain valid. They can still earn the winner/result point after recalculation.
+
+For group-stage matches, draw is a valid prediction. For knockout matches, users predict the final winner. If a knockout match is decided after extra time or penalties, the app scores the final winner from provider/admin data. The displayed score is the provider/admin final listed score.
+
+The World Cup champion pick is separate:
+
+- Users pick the team they think will win the tournament.
+- New users choose during registration when a session is available, otherwise on first login.
+- Existing non-admin users without a champion pick are prompted on next login before continuing.
+- The pick locks after first selection.
+- Correct champion pick: `3` points.
+- Champion points are added to the same leaderboard totals as match points.
+
+Profile totals include:
+
+- `match_winner_points`
+- `exact_score_points`
+- `champion_points`
+- `total_points`
 
 ## Private Groups
 
@@ -147,7 +187,12 @@ There are two sync paths:
 
 ### Scheduled API-Football Sync
 
-The workflow `.github/workflows/sync-fixtures.yml` runs every four hours and can also be started manually from GitHub Actions.
+The workflow `.github/workflows/sync-fixtures.yml` runs every four hours as a baseline and can also be started manually from GitHub Actions. During the expected World Cup match window, it also runs hourly:
+
+- June 11-30, 2026
+- July 1-19, 2026
+
+GitHub Actions scheduled jobs are not guaranteed to start at the exact minute. This is near-live sync, not real-time streaming.
 
 It runs:
 
@@ -172,7 +217,7 @@ FIXTURE_PROVIDER=api-football
 FOOTBALL_API_HOST=https://v3.football.api-sports.io
 ```
 
-API-Football/API-SPORTS is used as the primary provider for World Cup 2026 fixtures, match times, status, and final scores. The script requests World Cup fixtures using league `1` and season `2026`.
+API-Football/API-SPORTS is used as the primary provider for World Cup 2026 fixtures, match times, live status, elapsed time, halftime score, live score, and final scores. The script requests World Cup fixtures using league `1` and season `2026`.
 
 If API-Football fails after credentials are configured, the script falls back to openfootball and records `fallback_used = true` in `sync_logs`.
 
@@ -184,10 +229,15 @@ The script:
 - matches existing rows by provider fixture id, external reference, match number, date, and team names;
 - avoids overwriting useful existing values with null or empty provider values;
 - inserts new matches;
-- updates changed kickoff time, teams, stage, status, venue, city, score, and result;
+- updates changed kickoff time, teams, stage, status, elapsed time, halftime score, venue, city, score, and result;
 - detects newly finished or changed-result matches;
 - calls `recalculate_match_points` only for affected finished matches;
+- does not award points while a match is live or at halftime;
 - writes a persistent `sync_logs` row.
+
+API rate limits matter. Keep `FOOTBALL_API_KEY` server-side in GitHub secrets, do not expose it as a `VITE_` variable, and adjust schedule frequency if your provider plan cannot support hourly tournament refreshes.
+
+If true real-time updates are required later, use a backend worker or Supabase Edge Function scheduled job. GitHub Actions cron is useful for near-live updates, but it is not a guaranteed real-time service.
 
 ### Manual openfootball Sync
 
