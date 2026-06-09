@@ -8,7 +8,8 @@
     "build": "vite build",
     "lint": "eslint .",
     "preview": "vite preview",
-    "sync:fixtures": "node scripts/sync-fixtures.js"
+    "sync:fixtures": "node scripts/sync-fixtures.js",
+    "test": "node --test"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.45.4",
