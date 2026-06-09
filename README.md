@@ -15,6 +15,7 @@ This is a fan project. It does not use official FIFA logos, mascots, protected g
 - Prediction locking after kickoff or when a match is no longer upcoming.
 - Public Supabase-backed scoreboard with top-three podium, rank table, accuracy, and current-user highlight.
 - My Predictions dashboard with status filters and earned points.
+- Private friend groups with invite codes, invitations, members-only leaderboards, and owner controls.
 - Admin-only dashboard for adding, editing, deleting, finishing, and recalculating matches.
 - Admin-only Sync Fixtures button using openfootball World Cup 2026 JSON data.
 - Scheduled server-side fixture/result sync using API-Football as the primary provider and openfootball as fallback.
@@ -91,13 +92,47 @@ The schema creates:
 - `matches`: fixtures, status, scores, result, venue, and external fixture references.
 - `predictions`: one prediction per user per match.
 - `sync_logs`: provider sync audit trail for scheduled and manual fixture syncs.
+- `groups`: private prediction groups with owners and invite codes.
+- `group_members`: accepted group members and roles.
+- `group_invitations`: pending, accepted, and declined user invitations.
 - `leaderboard_profiles`: public scoreboard view without profile emails.
 - `latest_successful_sync`: public-safe view used for scoreboard last-updated text.
 - `recalculate_match_points(target_match_id uuid)`: admin-only point recalculation.
 
 RLS is enabled on all core tables. Users can manage only their own unlocked predictions. Admins can manage matches and recalculate points.
 
-If you already ran an older schema, rerun the latest `supabase/schema.sql`. It uses `add column if not exists` and `create table if not exists` for the new sync fields/logs.
+Private group data is protected with RLS:
+
+- users can read groups only when they are accepted members or owners;
+- users can read their own invitations;
+- accepted members can read the member list for their group;
+- writes use Supabase RPC functions for create, join, invite, accept/decline, leave, remove, update, regenerate code, and delete;
+- regular users cannot add themselves to a private group without a valid invite code or invitation.
+
+If you already ran an older schema, rerun the latest `supabase/schema.sql`. It uses `add column if not exists` and `create table if not exists` for the new sync fields/logs and private group tables.
+
+## Private Groups
+
+Logged-in users can open **Groups** from the navigation.
+
+Users can:
+
+- create a private group;
+- join a group with an invite code or invite link;
+- view groups they belong to;
+- accept or decline pending invitations;
+- leave groups they do not own.
+
+Group owners can:
+
+- rename the group and edit its description;
+- copy an invite code or invite link;
+- regenerate the invite code;
+- search existing users by username or email and send invitations;
+- remove members;
+- delete the group.
+
+Only accepted members appear in a group leaderboard. The group leaderboard uses the same `leaderboard_profiles` totals as the public scoreboard, filtered to accepted members of that group.
 
 ## Timezone Handling
 
