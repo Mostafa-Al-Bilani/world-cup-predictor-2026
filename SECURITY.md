@@ -21,14 +21,16 @@ Never commit these values to source code, docs, examples, screenshots, logs, or 
 - Supabase JWT secret
 - Supabase refresh tokens or access tokens
 - GitHub personal access tokens
-- API-Football keys
+- API-Football keys or any other private provider keys
 - Any `.env`, `.env.local`, or `.env.production` file with real values
 
 Server-only fixture sync secrets belong in GitHub repository secrets:
 
 - `SUPABASE_URL`
 - `SUPABASE_SERVICE_ROLE_KEY`
-- `FOOTBALL_API_KEY`
+- `FOOTBALL_API_KEY` only if you choose `FIXTURE_PROVIDER=api-football`
+
+The default scheduled sync provider is ESPN's no-key public scoreboard feed. It does not require a private provider key, but it still runs server-side through GitHub Actions so provider normalization and trusted score updates stay out of the browser.
 
 ## Required Supabase RLS Model
 

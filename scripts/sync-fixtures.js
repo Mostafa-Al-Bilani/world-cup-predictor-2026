@@ -5,19 +5,48 @@ import {
   API_FOOTBALL_BASE_URL,
   API_FOOTBALL_WORLD_CUP_LEAGUE_ID,
   API_FOOTBALL_WORLD_CUP_SEASON,
+  ESPN_WORLD_CUP_DATE_RANGE,
+  ESPN_WORLD_CUP_EVENT_LIMIT,
+  ESPN_WORLD_CUP_SCOREBOARD_URL,
   OPENFOOTBALL_2026_FIXTURES_URL,
   buildFixtureLookupMaps,
   buildMatchPayload,
   findExistingMatchForFixture,
   hasMatchChanged,
   normalizeApiFootballFixtures,
+  normalizeEspnFixtures,
   normalizeOpenFootballFixtures,
   shouldRecalculateMatch,
 } from '../src/services/fixtureNormalizer.js';
 
-const REQUIRED_PROVIDERS = new Set(['api-football', 'openfootball']);
+const REQUIRED_PROVIDERS = new Set(['espn', 'api-football', 'openfootball']);
 
 const env = process.env;
+
+const parseCliOptions = () => {
+  const options = {
+    dryRun: false,
+    provider: null,
+  };
+
+  process.argv.slice(2).forEach((arg, index, args) => {
+    if (arg === '--dry-run') {
+      options.dryRun = true;
+    }
+
+    if (arg === '--provider') {
+      options.provider = args[index + 1] ?? null;
+    }
+
+    if (arg.startsWith('--provider=')) {
+      options.provider = arg.split('=').at(1) ?? null;
+    }
+  });
+
+  return options;
+};
+
+const cliOptions = parseCliOptions();
 
 const requireEnv = (name) => {
   const value = env[name]?.trim();
@@ -28,9 +57,9 @@ const requireEnv = (name) => {
 };
 
 const readProvider = () => {
-  const provider = (env.FIXTURE_PROVIDER || 'api-football').trim().toLowerCase();
+  const provider = (cliOptions.provider || env.FIXTURE_PROVIDER || 'espn').trim().toLowerCase();
   if (!REQUIRED_PROVIDERS.has(provider)) {
-    throw new Error(`Unsupported FIXTURE_PROVIDER "${provider}". Use "api-football" or "openfootball".`);
+    throw new Error(`Unsupported FIXTURE_PROVIDER "${provider}". Use "espn", "api-football", or "openfootball".`);
   }
   return provider;
 };
@@ -88,6 +117,19 @@ const fetchApiFootballFixtures = async () => {
   return normalizeApiFootballFixtures(payload.response);
 };
 
+const fetchEspnFixtures = async () => {
+  const url = new URL(ESPN_WORLD_CUP_SCOREBOARD_URL);
+  url.searchParams.set('limit', String(env.ESPN_SCOREBOARD_LIMIT || ESPN_WORLD_CUP_EVENT_LIMIT));
+  url.searchParams.set('dates', env.ESPN_WORLD_CUP_DATES || ESPN_WORLD_CUP_DATE_RANGE);
+
+  const payload = await fetchJson(url);
+  if (!Array.isArray(payload.events) || payload.events.length === 0) {
+    throw new Error('ESPN returned no World Cup 2026 events.');
+  }
+
+  return normalizeEspnFixtures(payload.events);
+};
+
 const fetchOpenFootballFixtures = async () => {
   const payload = await fetchJson(new URL(OPENFOOTBALL_2026_FIXTURES_URL));
   if (!Array.isArray(payload.matches)) {
@@ -104,6 +146,25 @@ const fetchFixtures = async (provider) => {
       fallbackUsed: false,
       providerError: null,
     };
+  }
+
+  if (provider === 'espn') {
+    try {
+      return {
+        fixtures: await fetchEspnFixtures(),
+        providerUsed: 'espn',
+        fallbackUsed: false,
+        providerError: null,
+      };
+    } catch (error) {
+      const fixtures = await fetchOpenFootballFixtures();
+      return {
+        fixtures,
+        providerUsed: 'openfootball',
+        fallbackUsed: true,
+        providerError: error.message ?? 'ESPN provider failed.',
+      };
+    }
   }
 
   try {
@@ -158,6 +219,29 @@ const recalculateMatches = async (supabase, matchIds) => {
   }
 
   return { recalculated, failed, failures };
+};
+
+const dryRunFixtures = async () => {
+  const startedAt = new Date().toISOString();
+  const provider = readProvider();
+  const { fixtures, providerUsed, fallbackUsed, providerError } = await fetchFixtures(provider);
+  const sortedFixtures = [...fixtures].sort((a, b) => new Date(a.match_date).getTime() - new Date(b.match_date).getTime());
+
+  return {
+    provider_used: providerUsed,
+    fallback_used: fallbackUsed,
+    status: 'success',
+    started_at: startedAt,
+    finished_at: new Date().toISOString(),
+    total: fixtures.length,
+    first_match: sortedFixtures[0]
+      ? `${sortedFixtures[0].team_a} vs ${sortedFixtures[0].team_b} (${sortedFixtures[0].match_date})`
+      : null,
+    last_match: sortedFixtures.at(-1)
+      ? `${sortedFixtures.at(-1).team_a} vs ${sortedFixtures.at(-1).team_b} (${sortedFixtures.at(-1).match_date})`
+      : null,
+    error_message: providerError ? `Fallback used because primary provider failed: ${providerError}` : null,
+  };
 };
 
 const syncFixtures = async () => {
@@ -260,7 +344,7 @@ const syncFixtures = async () => {
   }
 };
 
-syncFixtures()
+(cliOptions.dryRun ? dryRunFixtures() : syncFixtures())
   .then((summary) => {
     console.log(JSON.stringify(summary, null, 2));
     if (summary.status === 'error') {

@@ -1,6 +1,10 @@
 export const OPENFOOTBALL_2026_FIXTURES_URL =
   'https://raw.githubusercontent.com/openfootball/worldcup.json/master/2026/worldcup.json';
 
+export const ESPN_WORLD_CUP_SCOREBOARD_URL = 'https://site.api.espn.com/apis/site/v2/sports/soccer/fifa.world/scoreboard';
+export const ESPN_WORLD_CUP_DATE_RANGE = '20260611-20260719';
+export const ESPN_WORLD_CUP_EVENT_LIMIT = 200;
+
 export const API_FOOTBALL_BASE_URL = 'https://v3.football.api-sports.io';
 export const API_FOOTBALL_WORLD_CUP_LEAGUE_ID = 1;
 export const API_FOOTBALL_WORLD_CUP_SEASON = 2026;
@@ -11,6 +15,7 @@ const TEAM_NAME_OVERRIDES = {
   'Czech Republic': 'Czechia',
   'IR Iran': 'Iran',
   'Korea Republic': 'South Korea',
+  'Bosnia-Herzegovina': 'Bosnia and Herzegovina',
 };
 
 const HOST_COUNTRY_MARKERS = [
@@ -47,6 +52,13 @@ const normalizeStage = (value) => {
   return stage || 'Group stage';
 };
 
+const titleCaseSlug = (value) =>
+  safeString(value)
+    .split('-')
+    .filter(Boolean)
+    .map((part) => (part.match(/^\d/) ? part : `${part.charAt(0).toUpperCase()}${part.slice(1)}`))
+    .join(' ');
+
 const getCity = (ground = '') => {
   const normalized = safeString(ground);
   const match = normalized.match(/\(([^)]+)\)/);
@@ -62,6 +74,11 @@ const readNumber = (value) => {
   if (value === null || value === undefined || value === '') return null;
   const number = Number(value);
   return Number.isFinite(number) ? number : null;
+};
+
+const readInteger = (value) => {
+  const number = readNumber(value);
+  return number === null ? null : Math.trunc(number);
 };
 
 const getMatchResultFromScores = (teamAScore, teamBScore) => {
@@ -152,6 +169,13 @@ const mergeText = (nextValue, existingValue, fallback = null) => {
 };
 
 const mergeNumber = (nextValue, existingValue) => (nextValue === null || nextValue === undefined ? existingValue ?? null : nextValue);
+
+const mergeStage = (nextValue, existingValue) => {
+  const nextStage = safeString(nextValue).toLowerCase();
+  const existingStage = safeString(existingValue);
+  if (nextStage === 'group stage' && /^group\s+[a-z]$/i.test(existingStage)) return existingValue;
+  return mergeText(nextValue, existingValue, 'Group stage');
+};
 
 export const hasMatchChanged = (existing, next) => {
   const fields = [
@@ -334,6 +358,107 @@ export const normalizeApiFootballFixtures = (rawFixtures) =>
     })
     .sort((a, b) => new Date(a.match_date).getTime() - new Date(b.match_date).getTime() || a.originalIndex - b.originalIndex);
 
+const normalizeEspnStatus = (status) => {
+  const type = status?.type ?? {};
+  const state = safeString(type.state).toLowerCase();
+  const name = safeString(type.name).toUpperCase();
+  const description = safeString(type.description).toLowerCase();
+  const detail = `${safeString(type.detail)} ${safeString(type.shortDetail)}`.toLowerCase();
+
+  if (type.completed === true || state === 'post' || name.includes('FINAL')) return 'finished';
+  if (description.includes('postponed') || name.includes('POSTPONED')) return 'postponed';
+  if (description.includes('cancel') || description.includes('abandon') || name.includes('CANCEL') || name.includes('ABANDON')) return 'cancelled';
+  if (description.includes('halftime') || detail.includes('half') || name.includes('HALFTIME')) return 'halftime';
+  if (state === 'in' || name.includes('IN_PROGRESS') || description.includes('live')) return 'live';
+  return 'upcoming';
+};
+
+const readEspnElapsed = (status) => {
+  const displayClock = safeString(status?.displayClock);
+  const displayMatch = displayClock.match(/(\d+)/);
+  if (displayMatch) return Number(displayMatch[1]);
+  return readInteger(status?.clock);
+};
+
+const getEspnCompetitors = (event) => {
+  const competitors = event?.competitions?.[0]?.competitors ?? [];
+  const home = competitors.find((competitor) => competitor.homeAway === 'home') ?? competitors[0];
+  const away = competitors.find((competitor) => competitor.homeAway === 'away') ?? competitors[1];
+  return { home, away };
+};
+
+const readEspnScore = (home, away, status) => {
+  const teamAScore = readInteger(home?.score);
+  const teamBScore = readInteger(away?.score);
+  const rawHasScore = teamAScore !== null && teamBScore !== null;
+  const hasScore = rawHasScore && ['live', 'halftime', 'finished'].includes(status);
+  const isFinished = status === 'finished';
+  const teamAWon = home?.winner === true;
+  const teamBWon = away?.winner === true;
+  let result = null;
+
+  if (hasScore && isFinished) {
+    if (teamAWon) result = 'team_a';
+    else if (teamBWon) result = 'team_b';
+    else result = getMatchResultFromScores(teamAScore, teamBScore);
+  }
+
+  return {
+    hasScore,
+    team_a_score: hasScore ? teamAScore : null,
+    team_b_score: hasScore ? teamBScore : null,
+    result,
+    halftime_team_a_score: null,
+    halftime_team_b_score: null,
+  };
+};
+
+export const normalizeEspnFixtures = (rawEvents) =>
+  rawEvents
+    .map((event, originalIndex) => {
+      const competition = event?.competitions?.[0] ?? {};
+      const eventStatus = competition.status ?? event.status;
+      const status = normalizeEspnStatus(eventStatus);
+      const { home, away } = getEspnCompetitors(event);
+      const score = readEspnScore(home, away, status);
+      const fixtureId = event.id ? String(event.id) : competition.id ? String(competition.id) : null;
+      const matchDate = competition.date ?? competition.startDate ?? event.date;
+      const stage = normalizeStage(titleCaseSlug(event.season?.slug));
+      const venue = competition.venue?.fullName ?? event.venue?.displayName ?? '';
+      const city = competition.venue?.address?.city ?? '';
+      const hostCountry = competition.venue?.address?.country ?? getHostCountry(`${venue} ${city}`);
+      const teamA = normalizeName(home?.team?.displayName ?? home?.team?.name ?? home?.team?.shortDisplayName);
+      const teamB = normalizeName(away?.team?.displayName ?? away?.team?.name ?? away?.team?.shortDisplayName);
+
+      return {
+        originalIndex,
+        sourceNumber: null,
+        match_number: null,
+        provider_name: 'espn',
+        provider_fixture_id: fixtureId,
+        team_a: teamA,
+        team_b: teamB,
+        match_date: matchDate ? new Date(matchDate).toISOString() : new Date().toISOString(),
+        stage,
+        status,
+        team_a_score: score.team_a_score,
+        team_b_score: score.team_b_score,
+        result: score.result,
+        elapsed: readEspnElapsed(eventStatus),
+        status_detail:
+          eventStatus?.type?.shortDetail ?? eventStatus?.type?.detail ?? eventStatus?.type?.description ?? eventStatus?.type?.name ?? null,
+        halftime_team_a_score: score.halftime_team_a_score,
+        halftime_team_b_score: score.halftime_team_b_score,
+        venue,
+        city,
+        host_country: hostCountry,
+        hasScore: score.hasScore,
+        external_ref: fixtureId ? `espn-2026-${fixtureId}` : null,
+        api_slug: slugifyFixtureValue(`${stage}-${fixtureId ?? originalIndex + 1}-${teamA}-${teamB}`),
+      };
+    })
+    .sort((a, b) => new Date(a.match_date).getTime() - new Date(b.match_date).getTime() || a.originalIndex - b.originalIndex);
+
 export const buildFixtureLookupMaps = (matches) => ({
   byProvider: new Map(
     matches
@@ -363,7 +488,7 @@ export const buildMatchPayload = (fixture, existing, syncedAt = new Date().toISO
     team_a: mergeText(fixture.team_a, existing?.team_a, 'TBD'),
     team_b: mergeText(fixture.team_b, existing?.team_b, 'TBD'),
     match_date: fixture.match_date ?? existing?.match_date,
-    stage: mergeText(fixture.stage, existing?.stage, 'Group stage'),
+    stage: mergeStage(fixture.stage, existing?.stage),
     status: shouldKeepExistingFinal ? existing.status : fixture.status,
     team_a_score: shouldKeepExistingFinal ? existing.team_a_score : fixture.hasScore ? fixture.team_a_score : existing?.team_a_score ?? null,
     team_b_score: shouldKeepExistingFinal ? existing.team_b_score : fixture.hasScore ? fixture.team_b_score : existing?.team_b_score ?? null,

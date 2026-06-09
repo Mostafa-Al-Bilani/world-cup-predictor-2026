@@ -19,7 +19,8 @@ This is a fan project. It does not use official FIFA logos, mascots, protected g
 - Private friend groups with invite codes, invitations, members-only leaderboards, and owner controls.
 - Admin-only dashboard for adding, editing, deleting, finishing, and recalculating matches.
 - Admin-only Sync Fixtures button using openfootball World Cup 2026 JSON data.
-- Scheduled server-side fixture/result/live-status sync using API-Football as the primary provider and openfootball as fallback.
+- Scheduled server-side fixture/result/live-status sync using ESPN's no-key public scoreboard feed by default, with openfootball fallback.
+- Optional API-Football/API-SPORTS provider support for paid plans that include World Cup 2026.
 - Persistent fixture sync logs with admin status summaries and public scoreboard last-updated text.
 - Timezone-aware kickoff display with admin local-time editing and UTC Supabase storage.
 - GitHub Pages-safe routing through `HashRouter`.
@@ -50,14 +51,14 @@ VITE_GITHUB_REPOSITORY_NAME=world-cup-predictor-2026
 # Server-side fixture sync only. Never expose these in React.
 SUPABASE_URL=https://your-project.supabase.co
 SUPABASE_SERVICE_ROLE_KEY=your-private-service-role-key
-FOOTBALL_API_KEY=your-api-sports-football-key
-FOOTBALL_API_HOST=https://v3.football.api-sports.io
-FIXTURE_PROVIDER=api-football
+FIXTURE_PROVIDER=espn
+# FOOTBALL_API_KEY=your-optional-api-sports-football-key
+# FOOTBALL_API_HOST=https://v3.football.api-sports.io
 ```
 
 Local development can run without Supabase values and will use demo localStorage data. Production builds do not allow demo accounts, demo predictions, or demo scoreboard data. If Supabase variables are missing in production, the app shows a visible configuration error.
 
-The `VITE_` variables are safe frontend build values. `SUPABASE_SERVICE_ROLE_KEY` and `FOOTBALL_API_KEY` are private server-side values for GitHub Actions only.
+The `VITE_` variables are safe frontend build values. `SUPABASE_SERVICE_ROLE_KEY` is private server-side data for GitHub Actions only. `FOOTBALL_API_KEY` is optional and must stay server-side if you switch to the API-Football provider.
 
 ## Run Locally
 
@@ -185,7 +186,7 @@ There are two sync paths:
 1. Scheduled server-side sync through GitHub Actions.
 2. Admin manual fallback sync from the Admin Dashboard.
 
-### Scheduled API-Football Sync
+### Scheduled ESPN Sync
 
 The workflow `.github/workflows/sync-fixtures.yml` runs every four hours as a baseline and can also be started manually from GitHub Actions. During the expected World Cup match window, it also runs hourly:
 
@@ -205,21 +206,36 @@ The server script reads:
 ```text
 SUPABASE_URL
 SUPABASE_SERVICE_ROLE_KEY
-FOOTBALL_API_KEY
-FOOTBALL_API_HOST
 FIXTURE_PROVIDER
+FOOTBALL_API_KEY       # optional, only if FIXTURE_PROVIDER=api-football
+FOOTBALL_API_HOST      # optional, only if FIXTURE_PROVIDER=api-football
 ```
 
 Default provider:
 
 ```text
-FIXTURE_PROVIDER=api-football
-FOOTBALL_API_HOST=https://v3.football.api-sports.io
+FIXTURE_PROVIDER=espn
 ```
 
-API-Football/API-SPORTS is used as the primary provider for World Cup 2026 fixtures, match times, live status, elapsed time, halftime score, live score, and final scores. The script requests World Cup fixtures using league `1` and season `2026`.
+The default provider is ESPN's public World Cup scoreboard feed:
 
-If API-Football fails after credentials are configured, the script falls back to openfootball and records `fallback_used = true` in `sync_logs`.
+```text
+https://site.api.espn.com/apis/site/v2/sports/soccer/fifa.world/scoreboard
+```
+
+It does not require an API key and currently returns the full 2026 World Cup event list with kickoff times, venues, match status, elapsed time, live score, final score, and winner flags. It is still a public third-party feed, not an official FIFA real-time API with an uptime SLA.
+
+If ESPN fails, the script falls back to openfootball and records `fallback_used = true` in `sync_logs`. openfootball is fixture-oriented and should not be treated as live score coverage.
+
+API-Football/API-SPORTS support remains available by setting:
+
+```text
+FIXTURE_PROVIDER=api-football
+FOOTBALL_API_HOST=https://v3.football.api-sports.io
+FOOTBALL_API_KEY=your-server-side-key
+```
+
+API-Football free plans may not include World Cup 2026. If your plan returns a season access error, keep `FIXTURE_PROVIDER=espn`.
 
 The script:
 
@@ -235,7 +251,13 @@ The script:
 - does not award points while a match is live or at halftime;
 - writes a persistent `sync_logs` row.
 
-API rate limits matter. Keep `FOOTBALL_API_KEY` server-side in GitHub secrets, do not expose it as a `VITE_` variable, and adjust schedule frequency if your provider plan cannot support hourly tournament refreshes.
+You can dry-run a provider without Supabase writes:
+
+```bash
+npm run sync:fixtures -- --dry-run --provider espn
+```
+
+API rate limits matter if you use a paid provider. Keep `FOOTBALL_API_KEY` server-side in GitHub secrets, do not expose it as a `VITE_` variable, and adjust schedule frequency if your provider plan cannot support hourly tournament refreshes.
 
 If true real-time updates are required later, use a backend worker or Supabase Edge Function scheduled job. GitHub Actions cron is useful for near-live updates, but it is not a guaranteed real-time service.
 
@@ -299,14 +321,14 @@ VITE_SUPABASE_ANON_KEY
 VITE_GITHUB_REPOSITORY_NAME
 SUPABASE_URL
 SUPABASE_SERVICE_ROLE_KEY
-FOOTBALL_API_KEY
-FOOTBALL_API_HOST
 FIXTURE_PROVIDER
+FOOTBALL_API_KEY     # optional, only for API-Football
+FOOTBALL_API_HOST    # optional, only for API-Football
 ```
 
 `VITE_GITHUB_REPOSITORY_NAME` should match the repository name so Vite builds assets with the correct base path.
 
-Use repository **secrets** for `SUPABASE_SERVICE_ROLE_KEY` and `FOOTBALL_API_KEY`. Do not put them in React code and do not prefix them with `VITE_`.
+Use repository **secrets** for `SUPABASE_SERVICE_ROLE_KEY` and any optional `FOOTBALL_API_KEY`. Do not put them in React code and do not prefix them with `VITE_`.
 
 The workflow `.github/workflows/deploy.yml` runs on pushes to `main`, builds with `npm run build`, uploads `dist`, and deploys with:
 

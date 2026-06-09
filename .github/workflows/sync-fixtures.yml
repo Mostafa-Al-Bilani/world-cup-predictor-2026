@@ -38,4 +38,4 @@ jobs:
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           FOOTBALL_API_KEY: ${{ secrets.FOOTBALL_API_KEY }}
           FOOTBALL_API_HOST: ${{ secrets.FOOTBALL_API_HOST || vars.FOOTBALL_API_HOST }}
-          FIXTURE_PROVIDER: ${{ vars.FIXTURE_PROVIDER || 'api-football' }}
+          FIXTURE_PROVIDER: ${{ vars.FIXTURE_PROVIDER || 'espn' }}

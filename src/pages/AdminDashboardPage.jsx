@@ -130,7 +130,7 @@ export function AdminDashboardPage() {
           <p className="text-sm font-black uppercase tracking-[0.32em] text-emerald-300">Protected operations</p>
           <h1 className="mt-3 text-4xl font-black sm:text-5xl">Admin Dashboard</h1>
           <p className="mt-3 max-w-2xl text-slate-300">
-            Manage fixtures, finish matches, enter results, sync openfootball fixtures, and recalculate scores.
+            Manage fixtures, finish matches, enter results, run the openfootball fallback sync, and recalculate scores.
           </p>
         </div>
         <button

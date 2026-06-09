@@ -4,6 +4,7 @@ import { getSafeErrorMessage } from '../src/utils/errors.js';
 import { canViewGroup, mergeOwnedGroupsWithMembershipRows, ownerMembershipForGroup } from '../src/utils/groups.js';
 import { getTopThreeUsers, hasScoredLeaderboardEntries, sortLeaderboardUsers } from '../src/utils/leaderboard.js';
 import { calculateChampionPoints, calculatePredictionPoints } from '../src/utils/predictions.js';
+import { buildMatchPayload, normalizeEspnFixtures, shouldRecalculateMatch } from '../src/services/fixtureNormalizer.js';
 import {
   normalizeGroupInput,
   normalizeInviteCode,
@@ -186,5 +187,90 @@ test('top three helper handles small and tied leaderboards', () => {
       { id: 'd', username: 'D', total_points: 0 },
     ]).map((user) => user.username),
     ['A', 'B', 'C'],
+  );
+});
+
+test('normalizes ESPN scheduled World Cup events without an API key', () => {
+  const [match] = normalizeEspnFixtures([
+    {
+      id: '760415',
+      date: '2026-06-11T19:00Z',
+      season: { slug: 'group-stage' },
+      competitions: [
+        {
+          date: '2026-06-11T19:00Z',
+          status: {
+            clock: 0,
+            displayClock: "0'",
+            type: { name: 'STATUS_SCHEDULED', state: 'pre', completed: false, shortDetail: 'Scheduled' },
+          },
+          venue: { fullName: 'Estadio Banorte', address: { city: 'Mexico City', country: 'Mexico' } },
+          competitors: [
+            { homeAway: 'home', winner: false, score: '0', team: { displayName: 'Mexico' } },
+            { homeAway: 'away', winner: false, score: '0', team: { displayName: 'South Africa' } },
+          ],
+        },
+      ],
+    },
+  ]);
+
+  assert.equal(match.provider_name, 'espn');
+  assert.equal(match.provider_fixture_id, '760415');
+  assert.equal(match.team_a, 'Mexico');
+  assert.equal(match.team_b, 'South Africa');
+  assert.equal(match.stage, 'Group Stage');
+  assert.equal(match.status, 'upcoming');
+  assert.equal(match.result, null);
+  assert.equal(match.hasScore, false);
+  assert.equal(match.team_a_score, null);
+  assert.equal(match.team_b_score, null);
+  assert.equal(match.venue, 'Estadio Banorte');
+});
+
+test('preserves existing group letter when ESPN only reports generic group stage', () => {
+  const payload = buildMatchPayload(
+    { stage: 'Group Stage', status: 'upcoming', hasScore: false, team_a: 'Mexico', team_b: 'South Africa' },
+    { stage: 'Group A', status: 'upcoming', team_a: 'Mexico', team_b: 'South Africa' },
+  );
+
+  assert.equal(payload.stage, 'Group A');
+});
+
+test('normalizes ESPN finished results using winner flags for knockout matches', () => {
+  const [match] = normalizeEspnFixtures([
+    {
+      id: '760517',
+      date: '2026-07-19T19:00Z',
+      season: { slug: 'final' },
+      competitions: [
+        {
+          status: {
+            clock: 90,
+            displayClock: "90'",
+            type: { name: 'STATUS_FINAL_PEN', state: 'post', completed: true, shortDetail: 'Final' },
+          },
+          competitors: [
+            { homeAway: 'home', winner: true, score: '1', team: { displayName: 'Brazil' } },
+            { homeAway: 'away', winner: false, score: '1', team: { displayName: 'Argentina' } },
+          ],
+        },
+      ],
+    },
+  ]);
+
+  assert.equal(match.stage, 'Final');
+  assert.equal(match.status, 'finished');
+  assert.equal(match.team_a_score, 1);
+  assert.equal(match.team_b_score, 1);
+  assert.equal(match.result, 'team_a');
+});
+
+test('does not recalculate points for ESPN live score updates before final status', () => {
+  assert.equal(
+    shouldRecalculateMatch(
+      { status: 'upcoming', team_a_score: null, team_b_score: null, result: null },
+      { status: 'live', team_a_score: 1, team_b_score: 0, result: null },
+    ),
+    false,
   );
 });

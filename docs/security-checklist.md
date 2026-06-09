@@ -37,7 +37,8 @@ Use this checklist after each production deploy and after every Supabase schema 
 - Confirm no refresh tokens or access tokens are committed.
 - Confirm `.env`, `.env.local`, `.env.production`, logs, and key files are ignored.
 - Confirm `SUPABASE_SERVICE_ROLE_KEY` exists only as a GitHub repository secret.
-- Confirm `FOOTBALL_API_KEY` exists only as a GitHub repository secret.
+- If using `FIXTURE_PROVIDER=api-football`, confirm `FOOTBALL_API_KEY` exists only as a GitHub repository secret.
+- Confirm no provider key is exposed as a `VITE_` frontend variable.
 
 ## GitHub Pages
 
@@ -45,6 +46,7 @@ Use this checklist after each production deploy and after every Supabase schema 
 - Confirm `npm run build` uses the correct `VITE_GITHUB_REPOSITORY_NAME`.
 - Confirm production build fails visibly if Supabase frontend env vars are missing.
 - Confirm demo/localStorage mode only appears on a local dev server without Supabase env vars.
+- Confirm fixture/live-score provider calls run only in GitHub Actions or trusted scripts, not in browser code.
 
 ## Storage
 
