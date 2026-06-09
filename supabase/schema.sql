@@ -317,7 +317,7 @@ create or replace function public.generate_group_invite_code()
 returns text
 language plpgsql
 security definer
-set search_path = public
+set search_path = public, extensions
 as $$
 declare
   code text;
