@@ -10,7 +10,12 @@ export function AuthForm({ mode }) {
   const navigate = useNavigate();
   const location = useLocation();
   const { signIn, signUp, isDemoMode } = useAuth();
-  const [form, setForm] = useState({ username: '', email: '', password: '', champion: '' });
+  const [form, setForm] = useState({
+    username: '',
+    email: '',
+    password: '',
+    champion: '',
+  });
   const [teams, setTeams] = useState([]);
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
@@ -27,8 +32,12 @@ export function AuthForm({ mode }) {
       .getAvailableTeams()
       .then((rows) => {
         if (cancelled) return;
+
         setTeams(rows);
-        setForm((current) => ({ ...current, champion: current.champion || rows[0] || '' }));
+        setForm((current) => ({
+          ...current,
+          champion: current.champion || rows[0] || '',
+        }));
       })
       .catch((error) => {
         toast.error(getSafeErrorMessage(error, 'Could not load World Cup teams.'));
@@ -62,6 +71,7 @@ export function AuthForm({ mode }) {
     event.preventDefault();
     setLoading(true);
     setErrorMessage('');
+
     try {
       if (isRegister) {
         await signUp(form);
@@ -70,9 +80,14 @@ export function AuthForm({ mode }) {
         await signIn(form);
         toast.success('Logged in successfully.');
       }
+
       navigate(location.state?.from ?? '/matches', { replace: true });
     } catch (error) {
-      const message = getSafeErrorMessage(error, 'Authentication failed. Check your email and password.');
+      const message = getSafeErrorMessage(
+        error,
+        'Authentication failed. Check your email and password.',
+      );
+
       setErrorMessage(message);
       toast.error(message);
     } finally {
@@ -86,12 +101,15 @@ export function AuthForm({ mode }) {
         <p className="text-sm font-black uppercase tracking-[0.32em] text-emerald-300">
           {isRegister ? 'Join the prediction table' : 'Back to the pitch'}
         </p>
+
         <h1 className="mt-4 text-4xl font-black sm:text-6xl">
           {isRegister ? 'Create your tournament account.' : 'Log in and lock your calls.'}
         </h1>
+
         <p className="mt-5 max-w-xl text-slate-300">
           Predict match outcomes, earn one point per correct result, and climb a public scoreboard built for the full 2026 schedule.
         </p>
+
         {isDemoMode ? (
           <div className="mt-6 rounded-lg border border-amber-300/30 bg-amber-300/10 p-4 text-sm text-amber-100">
             Local demo mode is active because Supabase environment variables are not configured. Use any email to explore; include
@@ -106,11 +124,13 @@ export function AuthForm({ mode }) {
         className="w-full min-w-0 max-w-[calc(100vw-2rem)] scroll-mt-24 rounded-lg border border-white/10 bg-slate-950/76 p-6 shadow-2xl backdrop-blur lg:max-w-none"
       >
         <h2 className="text-2xl font-black">{isRegister ? 'Register' : 'Log in'}</h2>
+
         {errorMessage ? (
           <div className="mt-4 rounded-lg border border-rose-300/30 bg-rose-300/10 px-4 py-3 text-sm text-rose-100">
             {errorMessage}
           </div>
         ) : null}
+
         <div className="mt-6 space-y-4">
           {isRegister ? (
             <label className="block min-w-0">
@@ -128,6 +148,7 @@ export function AuthForm({ mode }) {
               />
             </label>
           ) : null}
+
           <label className="block min-w-0">
             <span className="text-sm font-bold text-slate-300">Email</span>
             <input
@@ -143,6 +164,7 @@ export function AuthForm({ mode }) {
               placeholder="you@example.com"
             />
           </label>
+
           <PasswordField
             label="Password"
             name="password"
@@ -150,6 +172,7 @@ export function AuthForm({ mode }) {
             onChange={updateForm}
             autoComplete={isRegister ? 'new-password' : 'current-password'}
           />
+
           {isRegister ? (
             <label className="block min-w-0">
               <span className="text-sm font-bold text-slate-300">World Cup winner pick</span>
@@ -158,20 +181,22 @@ export function AuthForm({ mode }) {
                 name="champion"
                 value={form.champion}
                 onChange={updateForm}
-                className="mt-2 w-full rounded-lg border border-white/10 bg-white/5 px-4 py-3 text-white outline-none transition focus:border-emerald-300"
+                className="mt-2 w-full rounded-lg border border-white/10 bg-slate-900 px-4 py-3 text-white outline-none transition focus:border-emerald-300"
               >
                 {teams.map((team) => (
-                  <option key={team} value={team}>
+                  <option key={team} value={team} className="bg-slate-900 text-white">
                     {team}
                   </option>
                 ))}
               </select>
+
               <span className="mt-2 block text-xs leading-5 text-slate-400">
                 Correct champion prediction gives 3 points and locks after selection.
               </span>
             </label>
           ) : null}
         </div>
+
         <button
           disabled={loading || (isRegister && !form.champion)}
           type="submit"
@@ -179,6 +204,7 @@ export function AuthForm({ mode }) {
         >
           {loading ? 'Working...' : isRegister ? 'Create account' : 'Log in'}
         </button>
+
         {!isRegister ? (
           <p className="mt-4 text-center text-sm">
             <Link className="font-bold text-emerald-300 hover:text-white" to="/forgot-password">
@@ -186,6 +212,7 @@ export function AuthForm({ mode }) {
             </Link>
           </p>
         ) : null}
+
         <p className="mt-5 text-center text-sm text-slate-400">
           {isRegister ? 'Already have an account?' : 'New to the league?'}{' '}
           <Link className="font-bold text-emerald-300 hover:text-white" to={isRegister ? '/login' : '/register'}>
