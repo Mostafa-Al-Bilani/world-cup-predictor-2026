@@ -1,30 +1,30 @@
-import { useEffect, useMemo, useState } from 'react';
-import toast from 'react-hot-toast';
-import { useNavigate } from 'react-router-dom';
-import { EmptyState } from '../components/EmptyState';
-import { FilterDropdown } from '../components/FilterDropdown';
-import { LoadingSpinner } from '../components/LoadingSpinner';
-import { MatchCard } from '../components/MatchCard';
-import { useAuth } from '../context/AuthContext';
-import { matchService } from '../services/matchService';
-import { predictionService } from '../services/predictionService';
-import { isMatchLocked } from '../utils/date';
-import { getSafeErrorMessage } from '../utils/errors';
+import { useEffect, useMemo, useState } from "react";
+import toast from "react-hot-toast";
+import { useNavigate } from "react-router-dom";
+import { EmptyState } from "../components/EmptyState";
+import { FilterDropdown } from "../components/FilterDropdown";
+import { LoadingSpinner } from "../components/LoadingSpinner";
+import { MatchCard } from "../components/MatchCard";
+import { useAuth } from "../context/AuthContext";
+import { matchService } from "../services/matchService";
+import { predictionService } from "../services/predictionService";
+import { isMatchLocked } from "../utils/date";
+import { getSafeErrorMessage } from "../utils/errors";
 
 const statusFilterOptions = [
-  { value: 'all', label: 'All statuses' },
-  { value: 'upcoming', label: 'Upcoming' },
-  { value: 'live', label: 'Live' },
-  { value: 'halftime', label: 'Halftime' },
-  { value: 'finished', label: 'Finished' },
-  { value: 'postponed', label: 'Postponed' },
-  { value: 'cancelled', label: 'Cancelled' },
+  { value: "all", label: "All statuses" },
+  { value: "upcoming", label: "Upcoming" },
+  { value: "live", label: "Live" },
+  { value: "halftime", label: "Halftime" },
+  { value: "finished", label: "Finished" },
+  { value: "postponed", label: "Postponed" },
+  { value: "cancelled", label: "Cancelled" },
 ];
 
 const predictionFilterOptions = [
-  { value: 'all', label: 'All' },
-  { value: 'predicted', label: 'Predicted' },
-  { value: 'not_predicted', label: 'Not predicted' },
+  { value: "all", label: "All" },
+  { value: "predicted", label: "Predicted" },
+  { value: "not_predicted", label: "Not predicted" },
 ];
 
 export function MatchesPage() {
@@ -37,10 +37,10 @@ export function MatchesPage() {
   const [busyMatchId, setBusyMatchId] = useState(null);
 
   const [filters, setFilters] = useState({
-    search: '',
-    stage: 'all',
-    status: 'all',
-    prediction: 'all',
+    search: "",
+    stage: "all",
+    status: "all",
+    prediction: "all",
   });
 
   useEffect(() => {
@@ -56,7 +56,7 @@ export function MatchesPage() {
         setMatches(matchRows);
         setPredictions(predictionRows);
       } catch (error) {
-        toast.error(getSafeErrorMessage(error, 'Could not load matches.'));
+        toast.error(getSafeErrorMessage(error, "Could not load matches."));
       } finally {
         setLoading(false);
       }
@@ -66,18 +66,24 @@ export function MatchesPage() {
   }, [user?.id]);
 
   const predictionByMatch = useMemo(
-    () => new Map(predictions.map((prediction) => [prediction.match_id, prediction])),
+    () =>
+      new Map(
+        predictions.map((prediction) => [prediction.match_id, prediction]),
+      ),
     [predictions],
   );
 
   const stageOptions = useMemo(
-    () => Array.from(new Set(matches.map((match) => match.stage).filter(Boolean))).sort(),
+    () =>
+      Array.from(
+        new Set(matches.map((match) => match.stage).filter(Boolean)),
+      ).sort(),
     [matches],
   );
 
   const stageFilterOptions = useMemo(
     () => [
-      { value: 'all', label: 'All stages' },
+      { value: "all", label: "All stages" },
       ...stageOptions.map((stage) => ({
         value: stage,
         label: stage,
@@ -90,24 +96,27 @@ export function MatchesPage() {
     const query = filters.search.trim().toLowerCase();
 
     return matches.filter((match) => {
-      const searchableText = `${match.team_a} ${match.team_b} ${match.venue} ${match.city}`.toLowerCase();
+      const searchableText =
+        `${match.team_a} ${match.team_b} ${match.venue} ${match.city}`.toLowerCase();
 
       const matchesSearch = !query || searchableText.includes(query);
 
       const matchesStage =
-        filters.stage === 'all' || match.stage === filters.stage;
+        filters.stage === "all" || match.stage === filters.stage;
 
       const matchesStatus =
-        filters.status === 'all' || match.status === filters.status;
+        filters.status === "all" || match.status === filters.status;
 
       const hasPrediction = predictionByMatch.has(match.id);
 
       const matchesPrediction =
-        filters.prediction === 'all' ||
-        (filters.prediction === 'predicted' && hasPrediction) ||
-        (filters.prediction === 'not_predicted' && !hasPrediction);
+        filters.prediction === "all" ||
+        (filters.prediction === "predicted" && hasPrediction) ||
+        (filters.prediction === "not_predicted" && !hasPrediction);
 
-      return matchesSearch && matchesStage && matchesStatus && matchesPrediction;
+      return (
+        matchesSearch && matchesStage && matchesStatus && matchesPrediction
+      );
     });
   }, [filters, matches, predictionByMatch]);
 
@@ -120,12 +129,12 @@ export function MatchesPage() {
 
   const handlePredict = async (match, predictedResult, scoreDraft = {}) => {
     if (!isAuthenticated) {
-      navigate('/login', { state: { from: '/matches' } });
+      navigate("/login", { state: { from: "/matches" } });
       return;
     }
 
-    if (isMatchLocked(match) || match.status !== 'upcoming') {
-      toast.error('Predictions are locked for this match.');
+    if (isMatchLocked(match) || match.status !== "upcoming") {
+      toast.error("Predictions are locked for this match.");
       return;
     }
 
@@ -145,9 +154,24 @@ export function MatchesPage() {
         saved,
       ]);
 
-      toast.success('Prediction saved.');
+      toast.success("Prediction saved.");
     } catch (error) {
-      toast.error(getSafeErrorMessage(error, 'Could not save prediction.'));
+      const message = getSafeErrorMessage(error, "Could not save prediction.");
+      const normalizedMessage = message.toLowerCase();
+
+      if (normalizedMessage.includes("match has already started")) {
+        toast.error(
+          "Predictions are locked because the match has already started.",
+        );
+      } else if (normalizedMessage.includes("match is not upcoming")) {
+        toast.error(
+          "Predictions are locked because this match is not open for predictions.",
+        );
+      } else if (normalizedMessage.includes("predictions are locked")) {
+        toast.error("Predictions are locked for this match.");
+      } else {
+        toast.error(message);
+      }
     } finally {
       setBusyMatchId(null);
     }
@@ -170,8 +194,9 @@ export function MatchesPage() {
           </h1>
 
           <p className="mt-3 max-w-2xl text-slate-300">
-            Choose the group-stage result or knockout final winner, then add an optional exact score for a bonus point.
-            Once a match starts, the card locks.
+            Choose the group-stage result or knockout final winner, then add an
+            optional exact score for a bonus point. Once a match starts, the
+            card locks.
           </p>
         </div>
 
