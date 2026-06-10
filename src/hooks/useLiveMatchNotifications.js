@@ -2,70 +2,16 @@ import { useEffect, useRef } from "react";
 import toast from "react-hot-toast";
 import { matchService } from "../services/matchService";
 import { getSafeErrorMessage } from "../utils/errors";
+import { detectLiveMatchEvents } from "../utils/liveMatchEvents";
 
 const POLL_INTERVAL_MS = 30000;
 const MATCHES_UPDATED_EVENT = "wc26:matches-updated";
 
-const toNumber = (value) => {
-  const number = Number(value);
-  return Number.isFinite(number) ? number : 0;
-};
-
-const normalizeText = (value) =>
-  String(value ?? "")
-    .trim()
-    .toLowerCase()
-    .replace(/[_-]+/g, " ")
-    .replace(/\s+/g, " ");
-
-const getMatchPhase = (match) => {
-  const text = [
-    match.status,
-    match.period,
-    match.game_state,
-    match.status_detail,
-    match.status_description,
-    match.display_status,
-  ]
-    .map(normalizeText)
-    .filter(Boolean)
-    .join(" ");
-
-  if (
-    text.includes("penalties") ||
-    text.includes("penalty") ||
-    text.includes("shootout") ||
-    text.includes("pso")
-  ) {
-    return "penalties";
-  }
-
-  if (
-    text.includes("extra time") ||
-    text.includes("extratime") ||
-    text === "et" ||
-    text.includes(" et ")
-  ) {
-    return "extra_time";
-  }
-
-  if (text.includes("half")) return "halftime";
-  if (text.includes("live") || text.includes("in progress")) return "live";
-  if (text.includes("finished") || text.includes("final")) return "finished";
-
-  return normalizeText(match.status);
-};
-
-const getScore = (match) => ({
-  teamA: toNumber(match.team_a_score),
-  teamB: toNumber(match.team_b_score),
-});
-
-const showGoalToast = ({ match, scoringTeam }) => {
+const showGoalToast = ({ match, team }) => {
   toast.success(
-    `GOAL: ${scoringTeam} scored! ${match.team_a} ${
-      match.team_a_score ?? 0
-    } - ${match.team_b_score ?? 0} ${match.team_b}`,
+    `GOAL: ${team} scored! ${match.team_a} ${match.team_a_score ?? 0} - ${
+      match.team_b_score ?? 0
+    } ${match.team_b}`,
     {
       duration: 7000,
       icon: "⚽",
@@ -73,15 +19,15 @@ const showGoalToast = ({ match, scoringTeam }) => {
   );
 };
 
-const showPhaseToast = ({ match, phase }) => {
-  if (phase === "extra_time") {
+const showPhaseToast = ({ match, type }) => {
+  if (type === "extra_time") {
     toast(`Extra time started: ${match.team_a} vs ${match.team_b}`, {
       duration: 7000,
       icon: "⏱️",
     });
   }
 
-  if (phase === "penalties") {
+  if (type === "penalties") {
     toast(`Penalty shootout started: ${match.team_a} vs ${match.team_b}`, {
       duration: 7000,
       icon: "🥅",
@@ -129,34 +75,25 @@ export function useLiveMatchNotifications() {
           const previousMatch = previousById.get(nextMatch.id);
           if (!previousMatch) return;
 
-          const previousScore = getScore(previousMatch);
-          const nextScore = getScore(nextMatch);
+          const events = detectLiveMatchEvents({
+            previousMatch,
+            nextMatch,
+          });
 
-          if (nextScore.teamA > previousScore.teamA) {
-            showGoalToast({
-              match: nextMatch,
-              scoringTeam: nextMatch.team_a,
-            });
-          }
-
-          if (nextScore.teamB > previousScore.teamB) {
-            showGoalToast({
-              match: nextMatch,
-              scoringTeam: nextMatch.team_b,
-            });
-          }
-
-          const previousPhase = getMatchPhase(previousMatch);
-          const nextPhase = getMatchPhase(nextMatch);
-
-          if (previousPhase !== nextPhase) {
-            if (nextPhase === "extra_time" || nextPhase === "penalties") {
-              showPhaseToast({
-                match: nextMatch,
-                phase: nextPhase,
+          events.forEach((event) => {
+            if (event.type === "goal") {
+              showGoalToast({
+                match: event.match,
+                team: event.team,
               });
+              return;
             }
-          }
+
+            showPhaseToast({
+              match: event.match,
+              type: event.type,
+            });
+          });
         });
 
         previousMatchesRef.current = nextMatches;

@@ -6,6 +6,12 @@ import { StatusBadge } from "./StatusBadge";
 import { TeamFlag } from "./TeamFlag";
 import { formatDateTime, isMatchLocked } from "../utils/date";
 import {
+  getLivePhaseClassName,
+  getLivePhaseLabel,
+  normalizeMatchDisplayStatus,
+  shouldShowScoreBox,
+} from "../utils/matchDisplay";
+import {
   getPredictedScoreLabel,
   getPredictionLabel,
   getPredictionModeLabel,
@@ -14,53 +20,6 @@ import {
   matchAllowsDraw,
 } from "../utils/predictions";
 
-const scoreVisibleStatuses = new Set([
-  "finished",
-  "live",
-  "halftime",
-  "extra_time",
-  "penalties",
-  "penalty_shootout",
-]);
-
-const normalizeStatus = (status) =>
-  String(status ?? "")
-    .trim()
-    .toLowerCase()
-    .replace(/[\s-]+/g, "_");
-
-const getLivePhaseLabel = (match) => {
-  const status = normalizeStatus(match.status);
-
-  if (status === "extra_time") {
-    return "ET";
-  }
-
-  if (status === "penalties" || status === "penalty_shootout") {
-    return "PEN";
-  }
-
-  if (status === "live" && match.elapsed) {
-    return `${match.elapsed} min`;
-  }
-
-  return "";
-};
-
-const getLivePhaseClassName = (match) => {
-  const status = normalizeStatus(match.status);
-
-  if (status === "extra_time") {
-    return "text-amber-200";
-  }
-
-  if (status === "penalties" || status === "penalty_shootout") {
-    return "text-rose-200";
-  }
-
-  return "text-emerald-200";
-};
-
 export function MatchCard({
   match,
   prediction,
@@ -68,7 +27,7 @@ export function MatchCard({
   isAuthenticated,
   busy,
 }) {
-  const normalizedStatus = normalizeStatus(match.status);
+  const normalizedStatus = normalizeMatchDisplayStatus(match.status);
   const locked = isMatchLocked(match) || normalizedStatus !== "upcoming";
   const canDraw = matchAllowsDraw(match);
   const predictionStatus = getPredictionStatus(match, prediction);
@@ -143,7 +102,7 @@ export function MatchCard({
           <TeamName name={match.team_b} align="right" />
         </div>
 
-        {scoreVisibleStatuses.has(normalizedStatus) ? (
+        {shouldShowScoreBox(match) ? (
           <div className="mt-5 rounded-lg border border-white/10 bg-white/5 px-4 py-3 text-center text-2xl font-black">
             {match.team_a_score ?? "-"} : {match.team_b_score ?? "-"}
 
