@@ -162,6 +162,7 @@ create index if not exists matches_status_idx on public.matches(status);
 create unique index if not exists matches_external_ref_unique_idx
 on public.matches(external_ref)
 where external_ref is not null;
+
 create unique index if not exists matches_provider_fixture_unique_idx
 on public.matches(provider_name, provider_fixture_id)
 where provider_name is not null and provider_fixture_id is not null;
@@ -233,6 +234,8 @@ create table if not exists public.group_invitations (
 alter table public.groups add column if not exists description text;
 alter table public.groups add column if not exists invite_code text;
 alter table public.groups add column if not exists updated_at timestamptz not null default now();
+alter table public.groups add column if not exists live_predictions_enabled boolean not null default false;
+
 alter table public.group_members add column if not exists updated_at timestamptz not null default now();
 alter table public.group_invitations add column if not exists updated_at timestamptz not null default now();
 
@@ -1135,14 +1138,10 @@ set search_path = public
 as $$
   select exists (
     select 1
-    from public.group_members
-    where group_id = target_group_id
-      and user_id = check_user_id
-      and status = 'accepted'
-      and (
-        coalesce(auth.role(), '') = 'service_role'
-        or check_user_id = auth.uid()
-      )
+    from public.group_members gm
+    where gm.group_id = target_group_id
+      and gm.user_id = check_user_id
+      and gm.status = 'accepted'
   );
 $$;
 
@@ -1155,23 +1154,19 @@ set search_path = public
 as $$
   select check_user_id is not null
     and (
-      coalesce(auth.role(), '') = 'service_role'
-      or check_user_id = auth.uid()
-    )
-    and (
       exists (
         select 1
-        from public.groups
-        where id = target_group_id
-          and owner_id = check_user_id
+        from public.groups g
+        where g.id = target_group_id
+          and g.owner_id = check_user_id
       )
       or exists (
         select 1
-        from public.group_members
-        where group_id = target_group_id
-          and user_id = check_user_id
-          and status = 'accepted'
-          and role in ('owner', 'admin')
+        from public.group_members gm
+        where gm.group_id = target_group_id
+          and gm.user_id = check_user_id
+          and gm.status = 'accepted'
+          and gm.role in ('owner', 'admin')
       )
     );
 $$;
@@ -1483,6 +1478,97 @@ begin
 end;
 $$;
 
+create or replace function public.update_group_live_predictions_setting(
+  target_group_id uuid,
+  enabled boolean
+)
+returns public.groups
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  target_group public.groups;
+begin
+  if not public.can_manage_group(target_group_id, auth.uid()) then
+    raise exception 'Only group owners and admins can update live prediction settings';
+  end if;
+
+  update public.groups
+  set
+    live_predictions_enabled = enabled,
+    updated_at = now()
+  where id = target_group_id
+  returning * into target_group;
+
+  if target_group.id is null then
+    raise exception 'Group not found';
+  end if;
+
+  return target_group;
+end;
+$$;
+
+create or replace function public.get_live_group_predictions(target_group_id uuid)
+returns table (
+  match_id uuid,
+  match_number integer,
+  team_a text,
+  team_b text,
+  team_a_score integer,
+  team_b_score integer,
+  match_status text,
+  match_date timestamptz,
+  stage text,
+  user_id uuid,
+  username text,
+  predicted_result text,
+  predicted_home_score integer,
+  predicted_away_score integer
+)
+language sql
+security definer
+set search_path = public
+as $$
+  select
+    m.id as match_id,
+    m.match_number,
+    m.team_a,
+    m.team_b,
+    m.team_a_score,
+    m.team_b_score,
+    m.status as match_status,
+    m.match_date,
+    m.stage,
+    p.user_id,
+    coalesce(lp.username, 'Unknown player') as username,
+    p.predicted_result,
+    p.predicted_home_score,
+    p.predicted_away_score
+  from public.groups g
+  join public.group_members gm
+    on gm.group_id = g.id
+   and gm.status = 'accepted'
+  join public.predictions p
+    on p.user_id = gm.user_id
+  join public.matches m
+    on m.id = p.match_id
+  left join public.leaderboard_profiles lp
+    on lp.id = p.user_id
+  where g.id = target_group_id
+    and g.live_predictions_enabled = true
+    and m.match_date <= now()
+    and m.status in ('live', 'halftime')
+    and exists (
+      select 1
+      from public.group_members viewer_membership
+      where viewer_membership.group_id = target_group_id
+        and viewer_membership.user_id = auth.uid()
+        and viewer_membership.status = 'accepted'
+    )
+  order by m.match_date, lp.username;
+$$;
+
 create or replace function public.delete_private_group(target_group_id uuid)
 returns void
 language plpgsql
@@ -1631,10 +1717,13 @@ create policy "Admins can insert sync logs"
 on public.sync_logs for insert
 with check (public.is_admin());
 
+drop policy if exists "Members can read their groups" on public.groups;
+drop policy if exists "Members can read members of their groups" on public.group_members;
+
 drop policy if exists "Accepted members can read groups" on public.groups;
 create policy "Accepted members can read groups"
 on public.groups for select
-using (owner_id = auth.uid() or public.is_group_member(id));
+using (owner_id = auth.uid() or public.is_group_member(id, auth.uid()));
 
 drop policy if exists "Authenticated users can create owned groups" on public.groups;
 create policy "Authenticated users can create owned groups"
@@ -1644,8 +1733,8 @@ with check (owner_id = auth.uid());
 drop policy if exists "Group managers can update groups" on public.groups;
 create policy "Group managers can update groups"
 on public.groups for update
-using (public.can_manage_group(id))
-with check (public.can_manage_group(id));
+using (public.can_manage_group(id, auth.uid()))
+with check (public.can_manage_group(id, auth.uid()));
 
 drop policy if exists "Group owners can delete groups" on public.groups;
 create policy "Group owners can delete groups"
@@ -1655,44 +1744,48 @@ using (owner_id = auth.uid());
 drop policy if exists "Members can read group memberships" on public.group_members;
 create policy "Members can read group memberships"
 on public.group_members for select
-using (user_id = auth.uid() or public.is_group_member(group_id));
+using (
+  user_id = auth.uid()
+  or public.is_group_member(group_id, auth.uid())
+  or public.can_manage_group(group_id, auth.uid())
+);
 
 drop policy if exists "Group managers can insert memberships" on public.group_members;
 create policy "Group managers can insert memberships"
 on public.group_members for insert
-with check (public.can_manage_group(group_id));
+with check (public.can_manage_group(group_id, auth.uid()));
 
 drop policy if exists "Group managers can update memberships" on public.group_members;
 create policy "Group managers can update memberships"
 on public.group_members for update
 using (public.can_manage_group(group_id))
-with check (public.can_manage_group(group_id));
+with check (public.can_manage_group(group_id, auth.uid()));
 
 drop policy if exists "Group managers can delete memberships" on public.group_members;
 create policy "Group managers can delete memberships"
 on public.group_members for delete
-using (public.can_manage_group(group_id));
+using (public.can_manage_group(group_id, auth.uid()));
 
 drop policy if exists "Users and managers can read invitations" on public.group_invitations;
 create policy "Users and managers can read invitations"
 on public.group_invitations for select
-using (invited_user_id = auth.uid() or public.can_manage_group(group_id));
+using (invited_user_id = auth.uid() or public.can_manage_group(group_id, auth.uid()));
 
 drop policy if exists "Group managers can create invitations" on public.group_invitations;
 create policy "Group managers can create invitations"
 on public.group_invitations for insert
-with check (public.can_manage_group(group_id));
+with check (public.can_manage_group(group_id, auth.uid()));
 
 drop policy if exists "Invitees and managers can update invitations" on public.group_invitations;
 create policy "Invitees and managers can update invitations"
 on public.group_invitations for update
-using (invited_user_id = auth.uid() or public.can_manage_group(group_id))
-with check (invited_user_id = auth.uid() or public.can_manage_group(group_id));
+using (invited_user_id = auth.uid() or public.can_manage_group(group_id, auth.uid()))
+with check (invited_user_id = auth.uid() or public.can_manage_group(group_id, auth.uid()));
 
 drop policy if exists "Group managers can delete invitations" on public.group_invitations;
 create policy "Group managers can delete invitations"
 on public.group_invitations for delete
-using (public.can_manage_group(group_id));
+using (public.can_manage_group(group_id, auth.uid()));
 
 drop policy if exists "Users can read own champion prediction" on public.world_cup_winner_predictions;
 create policy "Users can read own champion prediction"
@@ -1790,6 +1883,8 @@ revoke execute on function public.remove_group_member(uuid, uuid) from PUBLIC;
 revoke execute on function public.leave_group(uuid) from PUBLIC;
 revoke execute on function public.regenerate_group_invite_code(uuid) from PUBLIC;
 revoke execute on function public.update_group_details(uuid, text, text) from PUBLIC;
+revoke execute on function public.update_group_live_predictions_setting(uuid, boolean) from PUBLIC;
+revoke execute on function public.get_live_group_predictions(uuid) from PUBLIC;
 revoke execute on function public.delete_private_group(uuid) from PUBLIC;
 
 grant select on public.groups to authenticated;
@@ -1797,6 +1892,8 @@ grant select on public.group_members to authenticated;
 grant select on public.group_invitations to authenticated;
 grant select on public.world_cup_winner_predictions to authenticated;
 grant select on public.stage_predictions to authenticated;
+grant execute on function public.update_group_live_predictions_setting(uuid, boolean) to authenticated;
+grant execute on function public.get_live_group_predictions(uuid) to authenticated;
 
 grant execute on function public.recalculate_match_points(uuid) to service_role;
 grant execute on function public.set_world_cup_winner_prediction(text) to authenticated;
