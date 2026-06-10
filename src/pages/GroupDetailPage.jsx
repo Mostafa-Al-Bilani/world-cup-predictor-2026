@@ -1,16 +1,16 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import toast from 'react-hot-toast';
-import { Link, useNavigate, useParams } from 'react-router-dom';
-import { Copy, RefreshCw, Search, Trash2, UserMinus } from 'lucide-react';
-import { ConfirmationModal } from '../components/ConfirmationModal';
-import { EmptyState } from '../components/EmptyState';
-import { LoadingSpinner } from '../components/LoadingSpinner';
-import { ScoreboardTable } from '../components/ScoreboardTable';
-import { TopThreePodium } from '../components/TopThreePodium';
-import { useAuth } from '../context/AuthContext';
-import { groupService } from '../services/groupService';
-import { formatDate } from '../utils/date';
-import { getSafeErrorMessage } from '../utils/errors';
+import { useCallback, useEffect, useMemo, useState } from "react";
+import toast from "react-hot-toast";
+import { Link, useNavigate, useParams } from "react-router-dom";
+import { Copy, RefreshCw, Search, Trash2, UserMinus } from "lucide-react";
+import { ConfirmationModal } from "../components/ConfirmationModal";
+import { EmptyState } from "../components/EmptyState";
+import { LoadingSpinner } from "../components/LoadingSpinner";
+import { ScoreboardTable } from "../components/ScoreboardTable";
+import { TopThreePodium } from "../components/TopThreePodium";
+import { useAuth } from "../context/AuthContext";
+import { groupService } from "../services/groupService";
+import { formatDate } from "../utils/date";
+import { getSafeErrorMessage } from "../utils/errors";
 
 export function GroupDetailPage() {
   const { groupId } = useParams();
@@ -24,18 +24,26 @@ export function GroupDetailPage() {
   const [saving, setSaving] = useState(false);
   const [searching, setSearching] = useState(false);
   const [invitingId, setInvitingId] = useState(null);
-  const [searchQuery, setSearchQuery] = useState('');
+  const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState([]);
-  const [editForm, setEditForm] = useState({ name: '', description: '' });
+  const [editForm, setEditForm] = useState({ name: "", description: "" });
   const [confirmAction, setConfirmAction] = useState(null);
+  const [livePredictions, setLivePredictions] = useState([]);
+  const [livePredictionsLoading, setLivePredictionsLoading] = useState(false);
+  const [liveSettingBusy, setLiveSettingBusy] = useState(false);
 
-  const currentMember = useMemo(() => members.find((member) => member.user_id === user?.id), [members, user?.id]);
-  const canManage = group?.owner_id === user?.id || ['owner', 'admin'].includes(currentMember?.role);
+  const currentMember = useMemo(
+    () => members.find((member) => member.user_id === user?.id),
+    [members, user?.id],
+  );
+  const canManage =
+    group?.owner_id === user?.id ||
+    ["owner", "admin"].includes(currentMember?.role);
   const isOwner = group?.owner_id === user?.id;
 
   const inviteLink = group?.invite_code
     ? `${window.location.origin}${window.location.pathname}#/groups?code=${group.invite_code}`
-    : '';
+    : "";
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -52,12 +60,15 @@ export function GroupDetailPage() {
         groupService.getGroupInvitations(groupId).catch(() => []),
       ]);
       setGroup(groupRow);
-      setEditForm({ name: groupRow.name, description: groupRow.description ?? '' });
+      setEditForm({
+        name: groupRow.name,
+        description: groupRow.description ?? "",
+      });
       setMembers(memberRows);
       setLeaderboard(leaderboardRows);
       setInvitations(invitationRows);
     } catch (error) {
-      toast.error(getSafeErrorMessage(error, 'Could not load group.'));
+      toast.error(getSafeErrorMessage(error, "Could not load group."));
     } finally {
       setLoading(false);
     }
@@ -67,12 +78,44 @@ export function GroupDetailPage() {
     load();
   }, [load]);
 
+  const loadLivePredictions = useCallback(async () => {
+    if (!group?.id || !group.live_predictions_enabled) {
+      setLivePredictions([]);
+      return;
+    }
+
+    setLivePredictionsLoading(true);
+
+    try {
+      const rows = await groupService.getLiveGroupPredictions(group.id);
+      setLivePredictions(rows);
+    } catch (error) {
+      toast.error(
+        getSafeErrorMessage(error, "Could not load live group predictions."),
+      );
+    } finally {
+      setLivePredictionsLoading(false);
+    }
+  }, [group?.id, group?.live_predictions_enabled]);
+
+  useEffect(() => {
+    loadLivePredictions();
+
+    const intervalId = window.setInterval(() => {
+      loadLivePredictions();
+    }, 60000);
+
+    return () => {
+      window.clearInterval(intervalId);
+    };
+  }, [loadLivePredictions]);
+
   const copyInvite = async (value, label) => {
     try {
       await navigator.clipboard.writeText(value);
       toast.success(`${label} copied.`);
     } catch {
-      toast.error('Could not copy to clipboard.');
+      toast.error("Could not copy to clipboard.");
     }
   };
 
@@ -82,7 +125,7 @@ export function GroupDetailPage() {
     try {
       setSearchResults(await groupService.searchProfiles(searchQuery, groupId));
     } catch (error) {
-      toast.error(getSafeErrorMessage(error, 'Could not search users.'));
+      toast.error(getSafeErrorMessage(error, "Could not search users."));
     } finally {
       setSearching(false);
     }
@@ -91,14 +134,54 @@ export function GroupDetailPage() {
   const inviteProfile = async (profile) => {
     setInvitingId(profile.id);
     try {
-      await groupService.inviteMember({ groupId, userId: profile.id, invitedBy: user.id });
+      await groupService.inviteMember({
+        groupId,
+        userId: profile.id,
+        invitedBy: user.id,
+      });
       toast.success(`Invitation sent to ${profile.username}.`);
-      setSearchResults((current) => current.filter((item) => item.id !== profile.id));
+      setSearchResults((current) =>
+        current.filter((item) => item.id !== profile.id),
+      );
       await load();
     } catch (error) {
-      toast.error(getSafeErrorMessage(error, 'Could not send invitation.'));
+      toast.error(getSafeErrorMessage(error, "Could not send invitation."));
     } finally {
       setInvitingId(null);
+    }
+  };
+
+  const updateLivePredictionsSetting = async (event) => {
+    const enabled = event.target.checked;
+
+    setLiveSettingBusy(true);
+
+    try {
+      const updatedGroup = await groupService.updateLivePredictionsEnabled({
+        groupId,
+        enabled,
+      });
+
+      setGroup((current) => ({
+        ...current,
+        ...updatedGroup,
+      }));
+
+      if (!enabled) {
+        setLivePredictions([]);
+      }
+
+      toast.success(
+        enabled
+          ? "Live group predictions enabled."
+          : "Live group predictions disabled.",
+      );
+    } catch (error) {
+      toast.error(
+        getSafeErrorMessage(error, "Could not update live prediction setting."),
+      );
+    } finally {
+      setLiveSettingBusy(false);
     }
   };
 
@@ -108,9 +191,9 @@ export function GroupDetailPage() {
     try {
       const updated = await groupService.updateGroup({ groupId, ...editForm });
       setGroup(updated);
-      toast.success('Group updated.');
+      toast.success("Group updated.");
     } catch (error) {
-      toast.error(getSafeErrorMessage(error, 'Could not update group.'));
+      toast.error(getSafeErrorMessage(error, "Could not update group."));
     } finally {
       setSaving(false);
     }
@@ -121,9 +204,11 @@ export function GroupDetailPage() {
     try {
       const updated = await groupService.regenerateInviteCode(groupId);
       setGroup(updated);
-      toast.success('Invite code regenerated.');
+      toast.success("Invite code regenerated.");
     } catch (error) {
-      toast.error(getSafeErrorMessage(error, 'Could not regenerate invite code.'));
+      toast.error(
+        getSafeErrorMessage(error, "Could not regenerate invite code."),
+      );
     } finally {
       setSaving(false);
     }
@@ -132,23 +217,26 @@ export function GroupDetailPage() {
   const runConfirmedAction = async () => {
     if (!confirmAction) return;
     try {
-      if (confirmAction.type === 'remove') {
-        await groupService.removeMember({ groupId, userId: confirmAction.member.user_id });
-        toast.success('Member removed.');
+      if (confirmAction.type === "remove") {
+        await groupService.removeMember({
+          groupId,
+          userId: confirmAction.member.user_id,
+        });
+        toast.success("Member removed.");
         await load();
       }
-      if (confirmAction.type === 'leave') {
+      if (confirmAction.type === "leave") {
         await groupService.leaveGroup({ groupId, userId: user.id });
-        toast.success('You left the group.');
-        navigate('/groups');
+        toast.success("You left the group.");
+        navigate("/groups");
       }
-      if (confirmAction.type === 'delete') {
+      if (confirmAction.type === "delete") {
         await groupService.deleteGroup(groupId);
-        toast.success('Group deleted.');
-        navigate('/groups');
+        toast.success("Group deleted.");
+        navigate("/groups");
       }
     } catch (error) {
-      toast.error(getSafeErrorMessage(error, 'Could not complete action.'));
+      toast.error(getSafeErrorMessage(error, "Could not complete action."));
     } finally {
       setConfirmAction(null);
     }
@@ -171,22 +259,31 @@ export function GroupDetailPage() {
     <main className="mx-auto max-w-7xl px-4 py-12 sm:px-6 lg:px-8">
       <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
         <div>
-          <Link to="/groups" className="text-sm font-bold text-emerald-300 hover:text-white">
+          <Link
+            to="/groups"
+            className="text-sm font-bold text-emerald-300 hover:text-white"
+          >
             Back to groups
           </Link>
-          <p className="mt-5 text-sm font-black uppercase tracking-[0.32em] text-emerald-300">Private leaderboard</p>
+          <p className="mt-5 text-sm font-black uppercase tracking-[0.32em] text-emerald-300">
+            Private leaderboard
+          </p>
           <h1 className="mt-3 text-4xl font-black sm:text-5xl">{group.name}</h1>
-          <p className="mt-3 max-w-2xl text-slate-300">{group.description || 'No description yet.'}</p>
+          <p className="mt-3 max-w-2xl text-slate-300">
+            {group.description || "No description yet."}
+          </p>
         </div>
         <div className="rounded-lg border border-white/10 bg-white/[0.04] px-5 py-4">
-          <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-400">Invite code</p>
+          <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-400">
+            Invite code
+          </p>
           <div className="mt-2 flex items-center gap-3">
             <code className="rounded bg-slate-950/70 px-3 py-2 font-mono text-lg font-black text-white">
               {group.invite_code}
             </code>
             <button
               type="button"
-              onClick={() => copyInvite(group.invite_code, 'Invite code')}
+              onClick={() => copyInvite(group.invite_code, "Invite code")}
               className="rounded-full border border-white/15 p-2 text-white transition hover:bg-white/10"
               aria-label="Copy invite code"
             >
@@ -207,15 +304,106 @@ export function GroupDetailPage() {
         </>
       ) : (
         <div className="mt-10">
-          <EmptyState title="No members on the board yet" description="Accepted group members will appear here." />
+          <EmptyState
+            title="No members on the board yet"
+            description="Accepted group members will appear here."
+          />
         </div>
       )}
+
+      {group.live_predictions_enabled ? (
+        <section className="mt-8 rounded-xl border border-emerald-300/20 bg-slate-950/72 p-5 shadow-xl">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="text-xs font-black uppercase tracking-[0.24em] text-emerald-300">
+                Live Group Predictions
+              </p>
+              <h2 className="mt-2 text-2xl font-black text-white">
+                Member picks during live matches
+              </h2>
+            </div>
+
+            {livePredictionsLoading ? (
+              <span className="text-sm font-bold text-slate-400">
+                Refreshing...
+              </span>
+            ) : null}
+          </div>
+
+          {livePredictions.length ? (
+            <div className="mt-5 space-y-5">
+              {Object.values(
+                livePredictions.reduce((groups, row) => {
+                  if (!groups[row.match_id]) {
+                    groups[row.match_id] = {
+                      match: row,
+                      predictions: [],
+                    };
+                  }
+
+                  groups[row.match_id].predictions.push(row);
+                  return groups;
+                }, {}),
+              ).map(({ match, predictions }) => (
+                <div
+                  key={match.match_id}
+                  className="rounded-lg border border-white/10 bg-white/[0.04] p-4"
+                >
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <p className="text-lg font-black text-white">
+                        {match.team_a} vs {match.team_b}
+                      </p>
+                      <p className="text-xs font-bold uppercase tracking-wide text-emerald-200">
+                        {match.match_status}
+                      </p>
+                    </div>
+
+                    <div className="text-2xl font-black text-white">
+                      {match.team_a_score ?? "-"} : {match.team_b_score ?? "-"}
+                    </div>
+                  </div>
+
+                  <div className="mt-4 overflow-hidden rounded-lg border border-white/10">
+                    {predictions.map((prediction) => (
+                      <div
+                        key={`${prediction.match_id}-${prediction.user_id}`}
+                        className="grid gap-2 border-b border-white/10 px-4 py-3 last:border-b-0 sm:grid-cols-[1fr_1fr_auto]"
+                      >
+                        <p className="font-bold text-white">
+                          {prediction.username}
+                        </p>
+
+                        <p className="text-sm text-slate-300">
+                          Pick: {formatPredictionResult(prediction, match)}
+                        </p>
+
+                        <p className="text-sm font-black text-emerald-200">
+                          {prediction.predicted_home_score} -{" "}
+                          {prediction.predicted_away_score}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="mt-5 rounded-lg border border-white/10 bg-white/[0.04] p-4 text-sm text-slate-300">
+              No live group predictions are available right now. This section
+              appears only during live or halftime matches.
+            </p>
+          )}
+        </section>
+      ) : null}
 
       <section className="mt-8 grid gap-6 lg:grid-cols-[minmax(0,1fr)_420px]">
         <div className="rounded-lg border border-white/10 bg-slate-950/72">
           <div className="border-b border-white/10 p-5">
             <h2 className="text-2xl font-black">Members</h2>
-            <p className="mt-2 text-sm text-slate-400">Only accepted members appear in this group leaderboard.</p>
+            <p className="mt-2 text-sm text-slate-400">
+              Only accepted members appear in this group leaderboard.
+            </p>
           </div>
           <div className="divide-y divide-white/10">
             {members.map((member) => (
@@ -223,7 +411,9 @@ export function GroupDetailPage() {
                 <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                   <div>
                     <div className="flex flex-wrap items-center gap-2">
-                      <h3 className="text-lg font-black text-white">{member.profile.username}</h3>
+                      <h3 className="text-lg font-black text-white">
+                        {member.profile.username}
+                      </h3>
                       <span className="rounded-full border border-white/10 px-2 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-slate-300">
                         {member.role}
                       </span>
@@ -233,12 +423,16 @@ export function GroupDetailPage() {
                         </span>
                       ) : null}
                     </div>
-                    <p className="mt-1 text-sm text-slate-400">Joined {formatDate(member.created_at)}</p>
+                    <p className="mt-1 text-sm text-slate-400">
+                      Joined {formatDate(member.created_at)}
+                    </p>
                   </div>
                   {canManage && member.user_id !== group.owner_id ? (
                     <button
                       type="button"
-                      onClick={() => setConfirmAction({ type: 'remove', member })}
+                      onClick={() =>
+                        setConfirmAction({ type: "remove", member })
+                      }
                       className="inline-flex items-center justify-center gap-2 rounded-full border border-rose-300/40 px-4 py-2 text-sm font-bold text-rose-200 transition hover:bg-rose-300 hover:text-rose-950"
                     >
                       <UserMinus size={16} />
@@ -255,8 +449,12 @@ export function GroupDetailPage() {
           {canManage ? (
             <>
               <section className="rounded-lg border border-white/10 bg-white/[0.04] p-5">
-                <h2 className="text-xl font-black text-white">Invite friends</h2>
-                <p className="mt-2 text-sm text-slate-300">Search existing users by username or email.</p>
+                <h2 className="text-xl font-black text-white">
+                  Invite friends
+                </h2>
+                <p className="mt-2 text-sm text-slate-300">
+                  Search existing users by username or email.
+                </p>
                 <form onSubmit={searchProfiles} className="mt-4 flex gap-2">
                   <input
                     value={searchQuery}
@@ -278,10 +476,17 @@ export function GroupDetailPage() {
                 {searchResults.length ? (
                   <div className="mt-4 space-y-2">
                     {searchResults.map((profile) => (
-                      <div key={profile.id} className="flex items-center justify-between gap-3 rounded-lg bg-slate-950/60 p-3">
+                      <div
+                        key={profile.id}
+                        className="flex items-center justify-between gap-3 rounded-lg bg-slate-950/60 p-3"
+                      >
                         <div className="min-w-0">
-                          <p className="truncate font-bold text-white">{profile.username}</p>
-                          <p className="truncate text-xs text-slate-400">{profile.email}</p>
+                          <p className="truncate font-bold text-white">
+                            {profile.username}
+                          </p>
+                          <p className="truncate text-xs text-slate-400">
+                            {profile.email}
+                          </p>
                         </div>
                         <button
                           type="button"
@@ -298,7 +503,7 @@ export function GroupDetailPage() {
 
                 <button
                   type="button"
-                  onClick={() => copyInvite(inviteLink, 'Invite link')}
+                  onClick={() => copyInvite(inviteLink, "Invite link")}
                   className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-full border border-white/15 px-4 py-2 text-sm font-bold text-white transition hover:bg-white/10"
                 >
                   <Copy size={16} />
@@ -307,38 +512,87 @@ export function GroupDetailPage() {
               </section>
 
               <section className="rounded-lg border border-white/10 bg-slate-950/72 p-5">
-                <h2 className="text-xl font-black text-white">Pending invites</h2>
+                <h2 className="text-xl font-black text-white">
+                  Pending invites
+                </h2>
                 {invitations.length ? (
                   <div className="mt-4 space-y-2">
                     {invitations.map((invitation) => (
-                      <div key={invitation.id} className="rounded-lg bg-white/[0.04] p-3">
-                        <p className="font-bold text-white">{invitation.invited_profile?.username ?? 'Invited user'}</p>
-                        <p className="text-xs text-slate-400">Sent {formatDate(invitation.created_at)}</p>
+                      <div
+                        key={invitation.id}
+                        className="rounded-lg bg-white/[0.04] p-3"
+                      >
+                        <p className="font-bold text-white">
+                          {invitation.invited_profile?.username ??
+                            "Invited user"}
+                        </p>
+                        <p className="text-xs text-slate-400">
+                          Sent {formatDate(invitation.created_at)}
+                        </p>
                       </div>
                     ))}
                   </div>
                 ) : (
-                  <p className="mt-3 text-sm text-slate-400">No pending invites.</p>
+                  <p className="mt-3 text-sm text-slate-400">
+                    No pending invites.
+                  </p>
                 )}
               </section>
 
-              <form onSubmit={updateGroup} className="rounded-lg border border-white/10 bg-white/[0.04] p-5">
-                <h2 className="text-xl font-black text-white">Group settings</h2>
+              <form
+                onSubmit={updateGroup}
+                className="rounded-lg border border-white/10 bg-white/[0.04] p-5"
+              >
+                <h2 className="text-xl font-black text-white">
+                  Group settings
+                </h2>
+
+                <label className="mt-4 flex items-start gap-3 rounded-lg border border-emerald-300/20 bg-emerald-300/10 p-4">
+                  <input
+                    type="checkbox"
+                    checked={Boolean(group.live_predictions_enabled)}
+                    disabled={liveSettingBusy}
+                    onChange={updateLivePredictionsSetting}
+                    className="mt-1 h-5 w-5 rounded border-white/20 bg-slate-950 text-emerald-300"
+                  />
+
+                  <span>
+                    <span className="block text-sm font-black text-white">
+                      Reveal live group predictions
+                    </span>
+                    <span className="mt-1 block text-xs leading-5 text-slate-300">
+                      Show member predictions only while a match is live or at
+                      halftime.
+                    </span>
+                  </span>
+                </label>
                 <label className="mt-4 block">
                   <span className="text-sm font-bold text-slate-300">Name</span>
                   <input
                     required
                     value={editForm.name}
-                    onChange={(event) => setEditForm((current) => ({ ...current, name: event.target.value }))}
+                    onChange={(event) =>
+                      setEditForm((current) => ({
+                        ...current,
+                        name: event.target.value,
+                      }))
+                    }
                     maxLength={80}
                     className="mt-2 w-full rounded-lg border border-white/10 bg-white/5 px-4 py-3 text-sm text-white outline-none focus:border-emerald-300"
                   />
                 </label>
                 <label className="mt-4 block">
-                  <span className="text-sm font-bold text-slate-300">Description</span>
+                  <span className="text-sm font-bold text-slate-300">
+                    Description
+                  </span>
                   <textarea
                     value={editForm.description}
-                    onChange={(event) => setEditForm((current) => ({ ...current, description: event.target.value }))}
+                    onChange={(event) =>
+                      setEditForm((current) => ({
+                        ...current,
+                        description: event.target.value,
+                      }))
+                    }
                     maxLength={500}
                     className="mt-2 min-h-24 w-full rounded-lg border border-white/10 bg-white/5 px-4 py-3 text-sm text-white outline-none focus:border-emerald-300"
                   />
@@ -348,7 +602,7 @@ export function GroupDetailPage() {
                   disabled={saving}
                   className="mt-5 w-full rounded-full bg-emerald-300 px-5 py-3 text-sm font-black text-emerald-950 transition hover:bg-white disabled:opacity-60"
                 >
-                  {saving ? 'Saving...' : 'Save settings'}
+                  {saving ? "Saving..." : "Save settings"}
                 </button>
                 <button
                   type="button"
@@ -368,7 +622,7 @@ export function GroupDetailPage() {
             {isOwner ? (
               <button
                 type="button"
-                onClick={() => setConfirmAction({ type: 'delete' })}
+                onClick={() => setConfirmAction({ type: "delete" })}
                 className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-full bg-rose-300 px-5 py-3 text-sm font-black text-rose-950 transition hover:bg-white"
               >
                 <Trash2 size={16} />
@@ -377,7 +631,7 @@ export function GroupDetailPage() {
             ) : (
               <button
                 type="button"
-                onClick={() => setConfirmAction({ type: 'leave' })}
+                onClick={() => setConfirmAction({ type: "leave" })}
                 className="mt-4 w-full rounded-full border border-rose-300/40 px-5 py-3 text-sm font-black text-rose-100 transition hover:bg-rose-300 hover:text-rose-950"
               >
                 Leave group
@@ -401,19 +655,37 @@ export function GroupDetailPage() {
 }
 
 function getConfirmTitle(action) {
-  if (action.type === 'remove') return 'Remove member?';
-  if (action.type === 'leave') return 'Leave group?';
-  return 'Delete group?';
+  if (action.type === "remove") return "Remove member?";
+  if (action.type === "leave") return "Leave group?";
+  return "Delete group?";
 }
 
 function getConfirmDescription(action) {
-  if (action.type === 'remove') return `${action.member.profile.username} will no longer appear in this group leaderboard.`;
-  if (action.type === 'leave') return 'You will lose access to this private group unless someone invites you again.';
-  return 'This permanently deletes the group, memberships, and pending invitations.';
+  if (action.type === "remove")
+    return `${action.member.profile.username} will no longer appear in this group leaderboard.`;
+  if (action.type === "leave")
+    return "You will lose access to this private group unless someone invites you again.";
+  return "This permanently deletes the group, memberships, and pending invitations.";
 }
 
 function getConfirmLabel(action) {
-  if (action.type === 'remove') return 'Remove member';
-  if (action.type === 'leave') return 'Leave group';
-  return 'Delete group';
+  if (action.type === "remove") return "Remove member";
+  if (action.type === "leave") return "Leave group";
+  return "Delete group";
+}
+
+function formatPredictionResult(prediction, match) {
+  if (prediction.predicted_result === "team_a") {
+    return match.team_a;
+  }
+
+  if (prediction.predicted_result === "team_b") {
+    return match.team_b;
+  }
+
+  if (prediction.predicted_result === "draw") {
+    return "Draw";
+  }
+
+  return "Unknown";
 }
