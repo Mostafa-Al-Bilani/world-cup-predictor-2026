@@ -21,6 +21,7 @@ const AUTH_ERROR_MAP = [
   [/user already registered/i, 'An account already exists for this email.'],
   [/password should be at least/i, 'Use a stronger password and try again.'],
   [/rate limit/i, 'Too many attempts. Wait a moment and try again.'],
+  [/security purposes/i, 'Too many attempts. Wait a moment and try again.'],
 ];
 
 export function getSafeErrorMessage(error, fallback = 'Something went wrong. Try again.') {

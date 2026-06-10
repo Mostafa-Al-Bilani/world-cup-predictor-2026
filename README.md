@@ -304,6 +304,14 @@ Email confirmation redirects to `#/login`. Password recovery redirects to the ap
 
 The repository also includes `public/404.html` as a GitHub Pages SPA fallback. If an auth provider sends a clean path such as `/login`, GitHub Pages redirects it back into the hash router instead of showing a Pages 404.
 
+If signup confirmation emails do not arrive:
+
+- Use the **Resend confirmation email** button shown after registration.
+- Check the mailbox spam/junk folder and Supabase Auth email logs.
+- In Supabase, confirm **Authentication -> Emails** is enabled for confirmation emails.
+- If the default Supabase sender is delayed or filtered, configure a custom SMTP provider.
+- Keep `https://<github-username>.github.io/<repository-name>/#/login` in the redirect allow list.
+
 ## Password Reset
 
 The login page includes a **Forgot your password?** link.

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { getSafeErrorMessage } from '../src/utils/errors.js';
-import { getTeamFlag } from '../src/utils/flags.js';
+import { getTeamFlag, getTeamFlagInfo } from '../src/utils/flags.js';
 import { canViewGroup, mergeOwnedGroupsWithMembershipRows, ownerMembershipForGroup } from '../src/utils/groups.js';
 import { getTopThreeUsers, hasScoredLeaderboardEntries, sortLeaderboardUsers } from '../src/utils/leaderboard.js';
 import { calculateChampionPoints, calculatePredictionPoints } from '../src/utils/predictions.js';
@@ -199,8 +199,10 @@ test('top three helper handles small and tied leaderboards', () => {
 });
 
 test('returns flags only for real country team names', () => {
-  assert.equal(getTeamFlag('Mexico'), '🇲🇽');
-  assert.equal(getTeamFlag('United States'), '🇺🇸');
+  assert.equal(getTeamFlagInfo('Mexico').code, 'MX');
+  assert.equal(getTeamFlagInfo('Mexico').imageUrl, 'https://flagcdn.com/mx.svg');
+  assert.equal(getTeamFlagInfo('United States').code, 'US');
+  assert.equal(getTeamFlag('Mexico'), getTeamFlagInfo('Mexico').emoji);
   assert.equal(getTeamFlag('Group A 2nd Place'), null);
   assert.equal(getTeamFlag('2A'), null);
 });

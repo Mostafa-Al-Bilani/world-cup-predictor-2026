@@ -1,8 +1,9 @@
-import { CalendarDays, MapPin, Shield, Trophy } from 'lucide-react';
+import { CalendarDays, MapPin, Trophy } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { PredictionButton } from './PredictionButton';
 import { StatusBadge } from './StatusBadge';
+import { TeamFlag } from './TeamFlag';
 import { formatDateTime, isMatchLocked } from '../utils/date';
 import {
   getPredictedScoreLabel,
@@ -12,17 +13,12 @@ import {
   getPredictionTotalPoints,
   matchAllowsDraw,
 } from '../utils/predictions';
-import { getTeamFlag } from '../utils/flags';
 
 export function MatchCard({ match, prediction, onPredict, isAuthenticated, busy }) {
   const locked = isMatchLocked(match) || match.status !== 'upcoming';
   const canDraw = matchAllowsDraw(match);
   const predictionStatus = getPredictionStatus(match, prediction);
   const [draft, setDraft] = useState({ result: '', homeScore: '', awayScore: '' });
-  const teamAFlag = getTeamFlag(match.team_a);
-  const teamBFlag = getTeamFlag(match.team_b);
-  const teamALabel = teamAFlag ? `${teamAFlag} ${match.team_a}` : match.team_a;
-  const teamBLabel = teamBFlag ? `${teamBFlag} ${match.team_b}` : match.team_b;
 
   useEffect(() => {
     setDraft({
@@ -59,11 +55,11 @@ export function MatchCard({ match, prediction, onPredict, isAuthenticated, busy 
 
       <div className="p-5">
         <div className="flex items-center justify-between gap-4">
-          <TeamName name={match.team_a} flag={teamAFlag} />
+          <TeamName name={match.team_a} />
           <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-black text-slate-300">
             VS
           </span>
-          <TeamName name={match.team_b} flag={teamBFlag} align="right" />
+          <TeamName name={match.team_b} align="right" />
         </div>
 
         {match.status === 'finished' || match.status === 'live' || match.status === 'halftime' ? (
@@ -98,7 +94,7 @@ export function MatchCard({ match, prediction, onPredict, isAuthenticated, busy 
             <div className="mt-4 space-y-4">
               <div className="flex flex-wrap gap-2">
                 <PredictionButton
-                  label={teamALabel}
+                  label={<PredictionLabel name={match.team_a} />}
                   selected={draft.result === 'team_a'}
                   disabled={locked || busy}
                   onClick={() => selectResult('team_a')}
@@ -112,7 +108,7 @@ export function MatchCard({ match, prediction, onPredict, isAuthenticated, busy 
                   />
                 ) : null}
                 <PredictionButton
-                  label={teamBLabel}
+                  label={<PredictionLabel name={match.team_b} />}
                   selected={draft.result === 'team_b'}
                   disabled={locked || busy}
                   onClick={() => selectResult('team_b')}
@@ -194,13 +190,24 @@ function PointPill({ label, value }) {
   );
 }
 
-function TeamName({ name, flag, align = 'left' }) {
+function PredictionLabel({ name }) {
   return (
-    <div className={align === 'right' ? 'text-right' : undefined}>
-      <span className="mb-2 inline-grid h-11 w-11 place-items-center rounded-lg border border-white/10 bg-white/5 text-emerald-200">
-        {flag ? <span className="text-2xl leading-none">{flag}</span> : <Shield size={20} />}
-      </span>
-      <h3 className="text-lg font-black text-white sm:text-xl">{name}</h3>
+    <span className="flex min-w-0 items-center gap-2">
+      <TeamFlag size="sm" teamName={name} />
+      <span className="truncate">{name}</span>
+    </span>
+  );
+}
+
+function TeamName({ name, align = 'left' }) {
+  return (
+    <div className={align === 'right' ? 'min-w-0 text-right' : 'min-w-0'}>
+      <TeamFlag
+        className={align === 'right' ? 'mb-3 ml-auto' : 'mb-3'}
+        size="xl"
+        teamName={name}
+      />
+      <h3 className="break-words text-lg font-black text-white sm:text-xl">{name}</h3>
     </div>
   );
 }

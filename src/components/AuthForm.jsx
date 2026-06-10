@@ -4,6 +4,7 @@ import toast from 'react-hot-toast';
 import { PasswordField } from './PasswordField';
 import { TeamPicker } from './TeamPicker';
 import { useAuth } from '../context/AuthContext';
+import { authService } from '../services/authService';
 import { championService } from '../services/championService';
 import { rememberPendingChampionPick } from '../utils/championPick';
 import { getSafeErrorMessage } from '../utils/errors';
@@ -20,7 +21,9 @@ export function AuthForm({ mode }) {
   });
   const [teams, setTeams] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [resendingConfirmation, setResendingConfirmation] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
+  const [pendingConfirmationEmail, setPendingConfirmationEmail] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
   const formRef = useRef(null);
   const firstInputRef = useRef(null);
@@ -74,6 +77,7 @@ export function AuthForm({ mode }) {
     event.preventDefault();
     setLoading(true);
     setErrorMessage('');
+    setPendingConfirmationEmail('');
     setSuccessMessage('');
 
     try {
@@ -81,6 +85,7 @@ export function AuthForm({ mode }) {
         const result = await signUp(form);
         if (result?.needsEmailConfirmation) {
           rememberPendingChampionPick({ email: form.email, team: form.champion });
+          setPendingConfirmationEmail(form.email);
           const message = 'Account created. Check your email to confirm it, then log in and lock your champion pick.';
           setSuccessMessage(message);
           toast.success('Check your email to confirm your account.');
@@ -103,6 +108,26 @@ export function AuthForm({ mode }) {
       toast.error(message);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const resendConfirmationEmail = async () => {
+    if (!pendingConfirmationEmail) return;
+
+    setResendingConfirmation(true);
+    setErrorMessage('');
+
+    try {
+      await authService.resendConfirmationEmail(pendingConfirmationEmail);
+      const message = 'Confirmation email sent again. Check your inbox and spam folder.';
+      setSuccessMessage(message);
+      toast.success('Confirmation email sent again.');
+    } catch (error) {
+      const message = getSafeErrorMessage(error, 'Could not resend the confirmation email yet.');
+      setErrorMessage(message);
+      toast.error(message);
+    } finally {
+      setResendingConfirmation(false);
     }
   };
 
@@ -144,7 +169,17 @@ export function AuthForm({ mode }) {
 
         {successMessage ? (
           <div className="mt-4 rounded-lg border border-emerald-300/30 bg-emerald-300/10 px-4 py-3 text-sm text-emerald-100">
-            {successMessage}
+            <p>{successMessage}</p>
+            {pendingConfirmationEmail ? (
+              <button
+                type="button"
+                disabled={resendingConfirmation}
+                onClick={resendConfirmationEmail}
+                className="mt-3 rounded-full border border-emerald-200/40 px-4 py-2 text-xs font-black text-emerald-50 transition hover:bg-emerald-200 hover:text-emerald-950 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {resendingConfirmation ? 'Sending...' : 'Resend confirmation email'}
+              </button>
+            ) : null}
           </div>
         ) : null}
 

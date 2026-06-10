@@ -114,6 +114,22 @@ export const authService = {
     });
     if (error) throw error;
   },
+  async resendConfirmationEmail(email) {
+    const normalizedEmail = normalizeEmail(email);
+
+    if (isDemoMode) {
+      throw new Error('Email confirmation requires Supabase authentication.');
+    }
+
+    const { error } = await supabase.auth.resend({
+      type: 'signup',
+      email: normalizedEmail,
+      options: {
+        emailRedirectTo: getEmailConfirmationRedirectUrl(),
+      },
+    });
+    if (error) throw error;
+  },
   async updatePassword(password) {
     const normalizedPassword = validatePassword(password, 'New password');
 
