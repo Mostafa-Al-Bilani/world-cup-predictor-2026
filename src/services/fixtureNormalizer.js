@@ -5,9 +5,6 @@ export const ESPN_WORLD_CUP_SCOREBOARD_URL = 'https://site.api.espn.com/apis/sit
 export const ESPN_WORLD_CUP_DATE_RANGE = '20260611-20260719';
 export const ESPN_WORLD_CUP_EVENT_LIMIT = 200;
 
-export const API_FOOTBALL_BASE_URL = 'https://v3.football.api-sports.io';
-export const API_FOOTBALL_WORLD_CUP_LEAGUE_ID = 1;
-export const API_FOOTBALL_WORLD_CUP_SEASON = 2026;
 
 const TEAM_NAME_OVERRIDES = {
   USA: 'United States',
@@ -17,6 +14,11 @@ const TEAM_NAME_OVERRIDES = {
   'Korea Republic': 'South Korea',
   'Bosnia & Herzegovina': 'Bosnia and Herzegovina',
   'Bosnia-Herzegovina': 'Bosnia and Herzegovina',
+  'DR Congo': 'DR Congo',
+  'Congo DR': 'DR Congo',
+  'Congo, DR': 'DR Congo',
+  'Democratic Republic of Congo': 'DR Congo',
+  'Democratic Republic of the Congo': 'DR Congo',
 };
 
 const HOST_COUNTRY_MARKERS = [
@@ -368,84 +370,6 @@ export const normalizeOpenFootballFixtures = (rawMatches) =>
         api_slug: slugifyFixtureValue(`${fixture.stage}-${matchNumber}-${fixture.team_a}-${fixture.team_b}`),
       };
     });
-
-const normalizeApiFootballStatus = (fixtureStatus) => {
-  const code = safeString(fixtureStatus?.short).toUpperCase();
-  if (FINISHED_STATUS_CODES.has(code)) return 'finished';
-  if (HALFTIME_STATUS_CODES.has(code)) return 'halftime';
-  if (LIVE_STATUS_CODES.has(code)) return 'live';
-  if (POSTPONED_STATUS_CODES.has(code)) return 'postponed';
-  if (CANCELLED_STATUS_CODES.has(code)) return 'cancelled';
-  return 'upcoming';
-};
-
-const readApiFootballScore = (fixture, status) => {
-  const scoreHome = readNumber(fixture.goals?.home ?? fixture.score?.fulltime?.home);
-  const scoreAway = readNumber(fixture.goals?.away ?? fixture.score?.fulltime?.away);
-  const halftimeHome = readNumber(fixture.score?.halftime?.home);
-  const halftimeAway = readNumber(fixture.score?.halftime?.away);
-  const hasScore = scoreHome !== null && scoreAway !== null;
-  const isFinished = status === 'finished';
-  const teamAWon = fixture.teams?.home?.winner === true;
-  const teamBWon = fixture.teams?.away?.winner === true;
-  let result = null;
-
-  if (hasScore && isFinished) {
-    if (teamAWon) result = 'team_a';
-    else if (teamBWon) result = 'team_b';
-    else result = getMatchResultFromScores(scoreHome, scoreAway);
-  }
-
-  return {
-    hasScore,
-    team_a_score: hasScore ? scoreHome : null,
-    team_b_score: hasScore ? scoreAway : null,
-    result,
-    halftime_team_a_score: halftimeHome,
-    halftime_team_b_score: halftimeAway,
-  };
-};
-
-export const normalizeApiFootballFixtures = (rawFixtures) =>
-  rawFixtures
-    .map((fixture, originalIndex) => {
-      const status = normalizeApiFootballStatus(fixture.fixture?.status);
-      const score = readApiFootballScore(fixture, status);
-      const fixtureId = fixture.fixture?.id ? String(fixture.fixture.id) : null;
-      const matchDate = fixture.fixture?.date ? new Date(fixture.fixture.date).toISOString() : new Date().toISOString();
-      const teamA = normalizeName(fixture.teams?.home?.name);
-      const teamB = normalizeName(fixture.teams?.away?.name);
-      const stage = normalizeStage(fixture.league?.round);
-      const venue = fixture.fixture?.venue?.name ?? '';
-      const city = fixture.fixture?.venue?.city ?? '';
-
-      return {
-        originalIndex,
-        sourceNumber: null,
-        match_number: null,
-        provider_name: 'api-football',
-        provider_fixture_id: fixtureId,
-        team_a: teamA,
-        team_b: teamB,
-        match_date: matchDate,
-        stage,
-        status,
-        team_a_score: score.team_a_score,
-        team_b_score: score.team_b_score,
-        result: score.result,
-        elapsed: readNumber(fixture.fixture?.status?.elapsed),
-        status_detail: fixture.fixture?.status?.long ?? fixture.fixture?.status?.short ?? null,
-        halftime_team_a_score: score.halftime_team_a_score,
-        halftime_team_b_score: score.halftime_team_b_score,
-        venue,
-        city,
-        host_country: getHostCountry(`${venue} ${city}`),
-        hasScore: score.hasScore,
-        external_ref: fixtureId ? `api-football-2026-${fixtureId}` : null,
-        api_slug: slugifyFixtureValue(`${stage}-${fixtureId ?? originalIndex + 1}-${teamA}-${teamB}`),
-      };
-    })
-    .sort((a, b) => new Date(a.match_date).getTime() - new Date(b.match_date).getTime() || a.originalIndex - b.originalIndex);
 
 const normalizeEspnStatus = (status) => {
   const type = status?.type ?? {};

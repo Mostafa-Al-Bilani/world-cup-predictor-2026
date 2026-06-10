@@ -2,9 +2,6 @@
 import process from 'node:process';
 import { createClient } from '@supabase/supabase-js';
 import {
-  API_FOOTBALL_BASE_URL,
-  API_FOOTBALL_WORLD_CUP_LEAGUE_ID,
-  API_FOOTBALL_WORLD_CUP_SEASON,
   ESPN_WORLD_CUP_DATE_RANGE,
   ESPN_WORLD_CUP_EVENT_LIMIT,
   ESPN_WORLD_CUP_SCOREBOARD_URL,
@@ -14,13 +11,12 @@ import {
   findExistingMatchForFixture,
   getDeletableDuplicateMatchIdsForFixture,
   hasMatchChanged,
-  normalizeApiFootballFixtures,
   normalizeEspnFixtures,
   normalizeOpenFootballFixtures,
   shouldRecalculateMatch,
 } from '../src/services/fixtureNormalizer.js';
 
-const REQUIRED_PROVIDERS = new Set(['espn', 'api-football', 'openfootball']);
+const REQUIRED_PROVIDERS = new Set(['espn', 'openfootball']);
 
 const env = process.env;
 
@@ -60,30 +56,9 @@ const requireEnv = (name) => {
 const readProvider = () => {
   const provider = (cliOptions.provider || env.FIXTURE_PROVIDER || 'espn').trim().toLowerCase();
   if (!REQUIRED_PROVIDERS.has(provider)) {
-    throw new Error(`Unsupported FIXTURE_PROVIDER "${provider}". Use "espn", "api-football", or "openfootball".`);
+    throw new Error(`Unsupported FIXTURE_PROVIDER "${provider}". Use "espn" or "openfootball".`);
   }
   return provider;
-};
-
-const normalizeBaseUrl = (value) => {
-  const raw = (value || API_FOOTBALL_BASE_URL).trim();
-  return raw.startsWith('http://') || raw.startsWith('https://') ? raw : `https://${raw}`;
-};
-
-const hasApiErrors = (errors) => {
-  if (!errors) return false;
-  if (Array.isArray(errors)) return errors.length > 0;
-  if (typeof errors === 'object') return Object.keys(errors).length > 0;
-  return Boolean(errors);
-};
-
-const summarizeApiErrors = (errors) => {
-  if (!hasApiErrors(errors)) return null;
-  if (typeof errors === 'string') return errors;
-  if (Array.isArray(errors)) return errors.join('; ');
-  return Object.entries(errors)
-    .map(([key, value]) => `${key}: ${Array.isArray(value) ? value.join(', ') : value}`)
-    .join('; ');
 };
 
 const fetchJson = async (url, options = {}) => {
@@ -92,30 +67,6 @@ const fetchJson = async (url, options = {}) => {
     throw new Error(`Fetch failed for ${url.origin}${url.pathname}: HTTP ${response.status}`);
   }
   return response.json();
-};
-
-const fetchApiFootballFixtures = async () => {
-  const apiKey = requireEnv('FOOTBALL_API_KEY');
-  const baseUrl = normalizeBaseUrl(env.FOOTBALL_API_HOST);
-  const url = new URL('fixtures', baseUrl.endsWith('/') ? baseUrl : `${baseUrl}/`);
-  url.searchParams.set('league', String(API_FOOTBALL_WORLD_CUP_LEAGUE_ID));
-  url.searchParams.set('season', String(API_FOOTBALL_WORLD_CUP_SEASON));
-
-  const payload = await fetchJson(url, {
-    headers: {
-      'x-apisports-key': apiKey,
-    },
-  });
-
-  if (hasApiErrors(payload.errors)) {
-    throw new Error(`API-Football returned an error: ${summarizeApiErrors(payload.errors)}`);
-  }
-
-  if (!Array.isArray(payload.response) || payload.response.length === 0) {
-    throw new Error('API-Football returned no World Cup 2026 fixtures.');
-  }
-
-  return normalizeApiFootballFixtures(payload.response);
 };
 
 const fetchEspnFixtures = async () => {
@@ -149,39 +100,21 @@ const fetchFixtures = async (provider) => {
     };
   }
 
-  if (provider === 'espn') {
-    try {
-      return {
-        fixtures: await fetchEspnFixtures(),
-        providerUsed: 'espn',
-        fallbackUsed: false,
-        providerError: null,
-      };
-    } catch (error) {
-      const fixtures = await fetchOpenFootballFixtures();
-      return {
-        fixtures,
-        providerUsed: 'openfootball',
-        fallbackUsed: true,
-        providerError: error.message ?? 'ESPN provider failed.',
-      };
-    }
-  }
-
   try {
     return {
-      fixtures: await fetchApiFootballFixtures(),
-      providerUsed: 'api-football',
+      fixtures: await fetchEspnFixtures(),
+      providerUsed: 'espn',
       fallbackUsed: false,
       providerError: null,
     };
   } catch (error) {
     const fixtures = await fetchOpenFootballFixtures();
+
     return {
       fixtures,
       providerUsed: 'openfootball',
       fallbackUsed: true,
-      providerError: error.message ?? 'API-Football provider failed.',
+      providerError: error.message ?? 'ESPN provider failed.',
     };
   }
 };
