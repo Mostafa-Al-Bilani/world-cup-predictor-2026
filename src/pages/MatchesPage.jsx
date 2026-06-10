@@ -6,14 +6,13 @@ import { FilterDropdown } from "../components/FilterDropdown";
 import { LoadingSpinner } from "../components/LoadingSpinner";
 import { MatchCard } from "../components/MatchCard";
 import { useAuth } from "../context/AuthContext";
+import { MATCHES_UPDATED_EVENT } from "../hooks/useLiveMatchNotifications";
 import { matchService } from "../services/matchService";
 import { predictionService } from "../services/predictionService";
-import { isMatchLocked } from "../utils/date";
+import { formatDate, isMatchLocked } from "../utils/date";
 import { getSafeErrorMessage } from "../utils/errors";
-import { MATCHES_UPDATED_EVENT } from "../hooks/useLiveMatchNotifications";
 
 const statusFilterOptions = [
-  { value: "all", label: "All statuses" },
   { value: "upcoming", label: "Upcoming" },
   { value: "live", label: "Live" },
   { value: "halftime", label: "Halftime" },
@@ -22,13 +21,39 @@ const statusFilterOptions = [
   { value: "finished", label: "Finished" },
   { value: "postponed", label: "Postponed" },
   { value: "cancelled", label: "Cancelled" },
+  { value: "all", label: "All statuses" },
 ];
 
 const predictionFilterOptions = [
-  { value: "all", label: "All" },
+  { value: "all", label: "All predictions" },
   { value: "predicted", label: "Predicted" },
-  { value: "not_predicted", label: "Not predicted" },
+  { value: "not_predicted", label: "Missing prediction" },
 ];
+
+const normalizeStatus = (status) =>
+  String(status ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/[\s-]+/g, "_");
+
+const groupMatchesByDate = (matches) => {
+  const grouped = new Map();
+
+  matches.forEach((match) => {
+    const key = formatDate(match.match_date);
+
+    if (!grouped.has(key)) {
+      grouped.set(key, []);
+    }
+
+    grouped.get(key).push(match);
+  });
+
+  return Array.from(grouped.entries()).map(([dateLabel, dateMatches]) => ({
+    dateLabel,
+    matches: dateMatches,
+  }));
+};
 
 export function MatchesPage() {
   const navigate = useNavigate();
@@ -42,7 +67,7 @@ export function MatchesPage() {
   const [filters, setFilters] = useState({
     search: "",
     stage: "all",
-    status: "all",
+    status: "upcoming",
     prediction: "all",
   });
 
@@ -64,22 +89,23 @@ export function MatchesPage() {
         setLoading(false);
       }
     }
-    useEffect(() => {
-      const handleMatchesUpdated = (event) => {
-        if (Array.isArray(event.detail?.matches)) {
-          setMatches(event.detail.matches);
-        }
-      };
-
-      window.addEventListener(MATCHES_UPDATED_EVENT, handleMatchesUpdated);
-
-      return () => {
-        window.removeEventListener(MATCHES_UPDATED_EVENT, handleMatchesUpdated);
-      };
-    }, []);
 
     load();
   }, [user?.id]);
+
+  useEffect(() => {
+    const handleMatchesUpdated = (event) => {
+      if (Array.isArray(event.detail?.matches)) {
+        setMatches(event.detail.matches);
+      }
+    };
+
+    window.addEventListener(MATCHES_UPDATED_EVENT, handleMatchesUpdated);
+
+    return () => {
+      window.removeEventListener(MATCHES_UPDATED_EVENT, handleMatchesUpdated);
+    };
+  }, []);
 
   const predictionByMatch = useMemo(
     () =>
@@ -111,30 +137,38 @@ export function MatchesPage() {
   const filteredMatches = useMemo(() => {
     const query = filters.search.trim().toLowerCase();
 
-    return matches.filter((match) => {
-      const searchableText =
-        `${match.team_a} ${match.team_b} ${match.venue} ${match.city}`.toLowerCase();
+    return matches
+      .filter((match) => {
+        const searchableText =
+          `${match.team_a} ${match.team_b} ${match.venue} ${match.city}`.toLowerCase();
 
-      const matchesSearch = !query || searchableText.includes(query);
+        const matchesSearch = !query || searchableText.includes(query);
 
-      const matchesStage =
-        filters.stage === "all" || match.stage === filters.stage;
+        const matchesStage =
+          filters.stage === "all" || match.stage === filters.stage;
 
-      const matchesStatus =
-        filters.status === "all" || match.status === filters.status;
+        const matchesStatus =
+          filters.status === "all" ||
+          normalizeStatus(match.status) === filters.status;
 
-      const hasPrediction = predictionByMatch.has(match.id);
+        const hasPrediction = predictionByMatch.has(match.id);
 
-      const matchesPrediction =
-        filters.prediction === "all" ||
-        (filters.prediction === "predicted" && hasPrediction) ||
-        (filters.prediction === "not_predicted" && !hasPrediction);
+        const matchesPrediction =
+          filters.prediction === "all" ||
+          (filters.prediction === "predicted" && hasPrediction) ||
+          (filters.prediction === "not_predicted" && !hasPrediction);
 
-      return (
-        matchesSearch && matchesStage && matchesStatus && matchesPrediction
-      );
-    });
+        return (
+          matchesSearch && matchesStage && matchesStatus && matchesPrediction
+        );
+      })
+      .sort((a, b) => new Date(a.match_date) - new Date(b.match_date));
   }, [filters, matches, predictionByMatch]);
+
+  const groupedMatches = useMemo(
+    () => groupMatchesByDate(filteredMatches),
+    [filteredMatches],
+  );
 
   const updateFilter = (event) => {
     setFilters((value) => ({
@@ -149,7 +183,7 @@ export function MatchesPage() {
       return;
     }
 
-    if (isMatchLocked(match) || match.status !== "upcoming") {
+    if (isMatchLocked(match) || normalizeStatus(match.status) !== "upcoming") {
       toast.error("Predictions are locked for this match.");
       return;
     }
@@ -170,7 +204,9 @@ export function MatchesPage() {
         saved,
       ]);
 
-      toast.success("Prediction saved.");
+      toast.success(
+        `Saved: ${match.team_a} vs ${match.team_b}`,
+      );
     } catch (error) {
       const message = getSafeErrorMessage(error, "Could not save prediction.");
       const normalizedMessage = message.toLowerCase();
@@ -202,17 +238,16 @@ export function MatchesPage() {
       <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
         <div>
           <p className="text-sm font-black uppercase tracking-[0.32em] text-emerald-300">
-            Full fixture board
+            Fixture board
           </p>
 
           <h1 className="mt-3 text-4xl font-black sm:text-5xl">
-            Predict every match.
+            Predict upcoming matches.
           </h1>
 
           <p className="mt-3 max-w-2xl text-slate-300">
-            Choose the group-stage result or knockout final winner, then add an
-            optional exact score for a bonus point. Once a match starts, the
-            card locks.
+            Matches are grouped by date. Upcoming matches are shown by default
+            so you can quickly finish missing predictions before kickoff.
           </p>
         </div>
 
@@ -248,24 +283,49 @@ export function MatchesPage() {
         </div>
       </div>
 
-      {filteredMatches.length ? (
-        <div className="mt-8 grid gap-5 lg:grid-cols-2">
-          {filteredMatches.map((match) => (
-            <MatchCard
-              key={match.id}
-              match={match}
-              prediction={predictionByMatch.get(match.id)}
-              isAuthenticated={isAuthenticated}
-              busy={busyMatchId === match.id}
-              onPredict={handlePredict}
-            />
-          ))}
+      {groupedMatches.length ? (
+        <div className="mt-8 space-y-10">
+          {groupedMatches.map((group) => {
+            const predictedCount = group.matches.filter((match) =>
+              predictionByMatch.has(match.id),
+            ).length;
+
+            return (
+              <section key={group.dateLabel}>
+                <div className="mb-4 flex flex-col gap-2 border-b border-white/10 pb-3 sm:flex-row sm:items-end sm:justify-between">
+                  <div>
+                    <h2 className="text-2xl font-black text-white">
+                      {group.dateLabel}
+                    </h2>
+                    <p className="mt-1 text-sm text-slate-400">
+                      {group.matches.length} matches · {predictedCount}{" "}
+                      predicted · {group.matches.length - predictedCount}{" "}
+                      missing
+                    </p>
+                  </div>
+                </div>
+
+                <div className="grid gap-5 lg:grid-cols-2">
+                  {group.matches.map((match) => (
+                    <MatchCard
+                      key={match.id}
+                      match={match}
+                      prediction={predictionByMatch.get(match.id)}
+                      isAuthenticated={isAuthenticated}
+                      busy={busyMatchId === match.id}
+                      onPredict={handlePredict}
+                    />
+                  ))}
+                </div>
+              </section>
+            );
+          })}
         </div>
       ) : (
         <div className="mt-8">
           <EmptyState
             title="No matches found"
-            description="Try a different team, stage, match status, or prediction filter."
+            description="Try showing all statuses, changing the stage, or clearing the search."
           />
         </div>
       )}
