@@ -14,6 +14,53 @@ import {
   matchAllowsDraw,
 } from "../utils/predictions";
 
+const scoreVisibleStatuses = new Set([
+  "finished",
+  "live",
+  "halftime",
+  "extra_time",
+  "penalties",
+  "penalty_shootout",
+]);
+
+const normalizeStatus = (status) =>
+  String(status ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/[\s-]+/g, "_");
+
+const getLivePhaseLabel = (match) => {
+  const status = normalizeStatus(match.status);
+
+  if (status === "extra_time") {
+    return "ET";
+  }
+
+  if (status === "penalties" || status === "penalty_shootout") {
+    return "PEN";
+  }
+
+  if (status === "live" && match.elapsed) {
+    return `${match.elapsed} min`;
+  }
+
+  return "";
+};
+
+const getLivePhaseClassName = (match) => {
+  const status = normalizeStatus(match.status);
+
+  if (status === "extra_time") {
+    return "text-amber-200";
+  }
+
+  if (status === "penalties" || status === "penalty_shootout") {
+    return "text-rose-200";
+  }
+
+  return "text-emerald-200";
+};
+
 export function MatchCard({
   match,
   prediction,
@@ -21,9 +68,12 @@ export function MatchCard({
   isAuthenticated,
   busy,
 }) {
-  const locked = isMatchLocked(match) || match.status !== "upcoming";
+  const normalizedStatus = normalizeStatus(match.status);
+  const locked = isMatchLocked(match) || normalizedStatus !== "upcoming";
   const canDraw = matchAllowsDraw(match);
   const predictionStatus = getPredictionStatus(match, prediction);
+  const livePhaseLabel = getLivePhaseLabel(match);
+
   const [draft, setDraft] = useState({
     result: "",
     homeScore: "",
@@ -85,20 +135,25 @@ export function MatchCard({
       <div className="p-5">
         <div className="flex items-center justify-between gap-4">
           <TeamName name={match.team_a} />
+
           <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-black text-slate-300">
             VS
           </span>
+
           <TeamName name={match.team_b} align="right" />
         </div>
 
-        {match.status === "finished" ||
-        match.status === "live" ||
-        match.status === "halftime" ? (
+        {scoreVisibleStatuses.has(normalizedStatus) ? (
           <div className="mt-5 rounded-lg border border-white/10 bg-white/5 px-4 py-3 text-center text-2xl font-black">
             {match.team_a_score ?? "-"} : {match.team_b_score ?? "-"}
-            {match.status === "live" && match.elapsed ? (
-              <span className="ml-2 align-middle text-xs font-bold text-emerald-200">
-                {match.elapsed} min
+
+            {livePhaseLabel ? (
+              <span
+                className={`ml-2 align-middle text-xs font-bold ${getLivePhaseClassName(
+                  match,
+                )}`}
+              >
+                {livePhaseLabel}
               </span>
             ) : null}
           </div>
@@ -109,10 +164,12 @@ export function MatchCard({
             <CalendarDays size={16} className="text-emerald-300" />
             {formatDateTime(match.match_date)}
           </span>
+
           <span className="flex items-center gap-2">
             <Trophy size={16} className="text-gold-300" />
             {match.stage}
           </span>
+
           <span className="flex items-center gap-2 sm:col-span-2">
             <MapPin size={16} className="text-sky-300" />
             {match.venue}, {match.city}
@@ -123,12 +180,15 @@ export function MatchCard({
           <p className="text-xs font-bold uppercase tracking-[0.22em] text-slate-400">
             {getPredictionModeLabel(match)}
           </p>
+
           <p className="mt-2 text-sm font-bold text-white">
             {getPredictionLabel(match, prediction?.predicted_result)}
           </p>
+
           <p className="mt-1 text-sm text-slate-300">
             Score pick: {getPredictedScoreLabel(prediction)}
           </p>
+
           {isAuthenticated ? (
             <div className="mt-4 space-y-4">
               <div className="flex flex-wrap gap-2">
@@ -138,6 +198,7 @@ export function MatchCard({
                   disabled={locked || busy}
                   onClick={() => selectResult("team_a")}
                 />
+
                 {canDraw ? (
                   <PredictionButton
                     label="Draw"
@@ -146,6 +207,7 @@ export function MatchCard({
                     onClick={() => selectResult("draw")}
                   />
                 ) : null}
+
                 <PredictionButton
                   label={<PredictionLabel name={match.team_b} />}
                   selected={draft.result === "team_b"}
@@ -159,12 +221,14 @@ export function MatchCard({
                   Score prediction is required. Enter both scores before saving
                   your prediction.
                 </p>
+
                 <ScoreInput
                   label={match.team_a}
                   value={draft.homeScore}
                   disabled={locked || busy}
                   onChange={(value) => updateScore("homeScore", value)}
                 />
+
                 <ScoreInput
                   label={match.team_b}
                   value={draft.awayScore}
@@ -191,7 +255,7 @@ export function MatchCard({
             </Link>
           )}
 
-          {match.status === "finished" && prediction ? (
+          {normalizedStatus === "finished" && prediction ? (
             <div className="mt-4 grid gap-2 text-xs sm:grid-cols-3">
               <PointPill
                 label="Winner"
@@ -200,10 +264,12 @@ export function MatchCard({
                   Number(prediction.is_correct === true)
                 }
               />
+
               <PointPill
                 label="Exact bonus"
                 value={prediction.exact_score_points ?? 0}
               />
+
               <PointPill
                 label="Total"
                 value={getPredictionTotalPoints(prediction)}
@@ -222,6 +288,7 @@ function ScoreInput({ label, value, disabled, onChange }) {
       <span className="block truncate text-xs font-bold text-slate-400">
         {label}
       </span>
+
       <input
         type="number"
         min="0"
@@ -266,6 +333,7 @@ function TeamName({ name, align = "left" }) {
         size="xl"
         teamName={name}
       />
+
       <h3 className="break-words text-lg font-black text-white sm:text-xl">
         {name}
       </h3>

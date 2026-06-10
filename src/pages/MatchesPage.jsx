@@ -10,12 +10,15 @@ import { matchService } from "../services/matchService";
 import { predictionService } from "../services/predictionService";
 import { isMatchLocked } from "../utils/date";
 import { getSafeErrorMessage } from "../utils/errors";
+import { MATCHES_UPDATED_EVENT } from "../hooks/useLiveMatchNotifications";
 
 const statusFilterOptions = [
   { value: "all", label: "All statuses" },
   { value: "upcoming", label: "Upcoming" },
   { value: "live", label: "Live" },
   { value: "halftime", label: "Halftime" },
+  { value: "extra_time", label: "Extra time" },
+  { value: "penalties", label: "Penalties" },
   { value: "finished", label: "Finished" },
   { value: "postponed", label: "Postponed" },
   { value: "cancelled", label: "Cancelled" },
@@ -61,6 +64,19 @@ export function MatchesPage() {
         setLoading(false);
       }
     }
+    useEffect(() => {
+      const handleMatchesUpdated = (event) => {
+        if (Array.isArray(event.detail?.matches)) {
+          setMatches(event.detail.matches);
+        }
+      };
+
+      window.addEventListener(MATCHES_UPDATED_EVENT, handleMatchesUpdated);
+
+      return () => {
+        window.removeEventListener(MATCHES_UPDATED_EVENT, handleMatchesUpdated);
+      };
+    }, []);
 
     load();
   }, [user?.id]);
