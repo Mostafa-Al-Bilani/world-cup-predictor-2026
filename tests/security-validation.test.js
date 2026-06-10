@@ -9,6 +9,7 @@ import {
   buildFixtureLookupMaps,
   buildMatchPayload,
   findExistingMatchForFixture,
+  fixtureEquivalentKey,
   getDeletableDuplicateMatchIdsForFixture,
   normalizeEspnFixtures,
   shouldRecalculateMatch,
@@ -331,6 +332,41 @@ test('matches ESPN knockout placeholders to seeded rows and flags empty duplicat
   const maps = buildFixtureLookupMaps([duplicate, seeded]);
   const existing = findExistingMatchForFixture(fixture, maps);
 
+  assert.equal(existing.id, seeded.id);
+  assert.deepEqual(getDeletableDuplicateMatchIdsForFixture(fixture, maps, existing.id), [duplicate.id]);
+});
+
+test('matches provider team-name aliases to seeded group fixtures and flags duplicates', () => {
+  const seeded = {
+    id: 'seeded-canada-bosnia',
+    match_number: 3,
+    team_a: 'Canada',
+    team_b: 'Bosnia & Herzegovina',
+    match_date: '2026-06-12T19:00:00.000Z',
+    stage: 'Group B',
+    prediction_count: 0,
+    created_at: '2026-01-01T00:00:00.000Z',
+  };
+  const duplicate = {
+    id: 'espn-canada-bosnia',
+    provider_name: 'espn',
+    provider_fixture_id: '760417',
+    external_ref: 'espn-2026-760417',
+    team_a: 'Canada',
+    team_b: 'Bosnia and Herzegovina',
+    match_date: '2026-06-12T19:00:00.000Z',
+    stage: 'Group Stage',
+    prediction_count: 0,
+    created_at: '2026-06-09T00:00:00.000Z',
+  };
+  const fixture = {
+    ...duplicate,
+    id: undefined,
+  };
+  const maps = buildFixtureLookupMaps([duplicate, seeded]);
+  const existing = findExistingMatchForFixture(fixture, maps);
+
+  assert.equal(fixtureEquivalentKey(seeded), fixtureEquivalentKey(duplicate));
   assert.equal(existing.id, seeded.id);
   assert.deepEqual(getDeletableDuplicateMatchIdsForFixture(fixture, maps, existing.id), [duplicate.id]);
 });

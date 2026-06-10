@@ -15,6 +15,7 @@ const TEAM_NAME_OVERRIDES = {
   'Czech Republic': 'Czechia',
   'IR Iran': 'Iran',
   'Korea Republic': 'South Korea',
+  'Bosnia & Herzegovina': 'Bosnia and Herzegovina',
   'Bosnia-Herzegovina': 'Bosnia and Herzegovina',
 };
 
@@ -45,6 +46,17 @@ const normalizeName = (value) => {
   if (!name) return 'TBD';
   return TEAM_NAME_OVERRIDES[name] ?? name;
 };
+
+export const normalizeFixtureTeamKey = (value) =>
+  normalizeName(value)
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/&/g, ' and ')
+    .replace(/\bthe\b/g, ' ')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim()
+    .replace(/\s+/g, ' ');
 
 const normalizeStage = (value) => {
   const stage = safeString(value);
@@ -89,6 +101,11 @@ const normalizeKickoffMinute = (value) => {
   return date.toISOString();
 };
 
+const normalizeEquivalentStageKey = (stage) => {
+  const stageKey = normalizeStageKey(stage);
+  return stageKey.startsWith('group') ? 'group' : stageKey;
+};
+
 const PLACEHOLDER_TEAM_PATTERN =
   /^(?:tbd|[123][a-l](?:\/[a-l])*|[a-l][123]?|w\d+|l\d+|group\s+[a-l]\s+(?:1st|2nd|3rd)\s+place|round\s+of\s+\d+\s+\d+\s+winner|round\s+of\s+\d+\s+\d+\s+loser|quarterfinal\s+\d+\s+winner|quarterfinal\s+\d+\s+loser|semifinal\s+\d+\s+winner|semifinal\s+\d+\s+loser)$/i;
 
@@ -106,6 +123,14 @@ const fixtureSlotKey = (match) => {
   const kickoff = normalizeKickoffMinute(match.match_date);
   const stage = normalizeStageKey(match.stage);
   return kickoff && stage ? `${kickoff}|${stage}` : null;
+};
+
+export const fixtureEquivalentKey = (match) => {
+  const kickoff = normalizeKickoffMinute(match.match_date);
+  const stage = normalizeEquivalentStageKey(match.stage);
+  const teamA = normalizeFixtureTeamKey(match.team_a);
+  const teamB = normalizeFixtureTeamKey(match.team_b);
+  return kickoff && stage && teamA && teamB ? `${kickoff}|${stage}|${teamA}|${teamB}` : null;
 };
 
 const addListMapValue = (map, key, value) => {
@@ -211,8 +236,8 @@ const parseOpenFootballKickoff = ({ date, time }) => {
 };
 
 export const fixtureFingerprint = (match) =>
-  [safeString(match.match_date).slice(0, 10), match.team_a, match.team_b]
-    .map((value) => safeString(value).toLowerCase().replace(/[^a-z0-9]+/g, ''))
+  [safeString(match.match_date).slice(0, 10), normalizeFixtureTeamKey(match.team_a), normalizeFixtureTeamKey(match.team_b)]
+    .map((value) => safeString(value).replace(/[^a-z0-9]+/g, ''))
     .join('|');
 
 const comparableDate = (value) => (value ? new Date(value).toISOString() : null);
@@ -525,7 +550,9 @@ export const normalizeEspnFixtures = (rawEvents) =>
 
 export const buildFixtureLookupMaps = (matches) => {
   const byPlaceholderSlot = new Map();
+  const byEquivalentSlot = new Map();
   matches.forEach((match) => addListMapValue(byPlaceholderSlot, fixtureSlotKey(match), match));
+  matches.forEach((match) => addListMapValue(byEquivalentSlot, fixtureEquivalentKey(match), match));
 
   return {
     byProvider: new Map(
@@ -537,6 +564,7 @@ export const buildFixtureLookupMaps = (matches) => {
     byMatchNumber: new Map(matches.filter((match) => match.match_number).map((match) => [match.match_number, match])),
     byFingerprint: new Map(matches.map((match) => [fixtureFingerprint(match), match])),
     byPlaceholderSlot,
+    byEquivalentSlot,
   };
 };
 
@@ -546,8 +574,15 @@ const findPlaceholderMatchForFixture = (fixture, maps) => {
   return sortPlaceholderCandidates(fixture, maps.byPlaceholderSlot.get(key))[0] ?? null;
 };
 
+const findEquivalentMatchForFixture = (fixture, maps) => {
+  const key = fixtureEquivalentKey(fixture);
+  if (!key) return null;
+  return sortPlaceholderCandidates(fixture, maps.byEquivalentSlot.get(key))[0] ?? null;
+};
+
 export const findExistingMatchForFixture = (fixture, maps) =>
   findPlaceholderMatchForFixture(fixture, maps) ??
+  findEquivalentMatchForFixture(fixture, maps) ??
   (fixture.provider_name && fixture.provider_fixture_id
     ? maps.byProvider.get(`${fixture.provider_name}:${fixture.provider_fixture_id}`)
     : null) ??
@@ -556,10 +591,15 @@ export const findExistingMatchForFixture = (fixture, maps) =>
   maps.byFingerprint.get(fixtureFingerprint(fixture));
 
 export const getDeletableDuplicateMatchIdsForFixture = (fixture, maps, canonicalId) => {
-  const key = fixtureSlotKey(fixture);
-  if (!key || !canonicalId) return [];
+  if (!canonicalId) return [];
 
-  return (maps.byPlaceholderSlot.get(key) ?? [])
+  const candidatesById = new Map();
+  [maps.byPlaceholderSlot.get(fixtureSlotKey(fixture)), maps.byEquivalentSlot.get(fixtureEquivalentKey(fixture))]
+    .filter(Boolean)
+    .flat()
+    .forEach((match) => candidatesById.set(match.id, match));
+
+  return [...candidatesById.values()]
     .filter((match) => match.id !== canonicalId && (match.prediction_count ?? 0) === 0)
     .map((match) => match.id)
     .filter(Boolean);
