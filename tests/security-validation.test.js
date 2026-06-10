@@ -75,17 +75,41 @@ test('normalizes admin match payload', () => {
   assert.equal(payload.result, null);
 });
 
-test('validates optional exact score predictions', () => {
-  assert.deepEqual(normalizePredictionScorePair('', ''), {
-    predictedHomeScore: null,
-    predictedAwayScore: null,
-  });
-  assert.deepEqual(normalizePredictionScorePair('2', 1), {
+test('requires exact score predictions', () => {
+  assert.deepEqual(normalizePredictionScorePair(2, 1), {
     predictedHomeScore: 2,
     predictedAwayScore: 1,
   });
-  assert.throws(() => normalizePredictionScorePair('2', ''), /both scores/);
-  assert.throws(() => normalizePredictionScorePair('-1', '0'), /non-negative/);
+
+  assert.deepEqual(normalizePredictionScorePair('0', '0'), {
+    predictedHomeScore: 0,
+    predictedAwayScore: 0,
+  });
+
+  assert.throws(
+    () => normalizePredictionScorePair('', ''),
+    /Enter both scores before saving your prediction/,
+  );
+
+  assert.throws(
+    () => normalizePredictionScorePair(1, ''),
+    /Enter both scores before saving your prediction/,
+  );
+
+  assert.throws(
+    () => normalizePredictionScorePair('', 1),
+    /Enter both scores before saving your prediction/,
+  );
+
+  assert.throws(
+    () => normalizePredictionScorePair(-1, 1),
+    /Home team score must be a non-negative whole number from 0 to 99/,
+  );
+
+  assert.throws(
+    () => normalizePredictionScorePair(1, 100),
+    /Away team score must be a non-negative whole number from 0 to 99/,
+  );
 });
 
 test('scores correct winner and exact score predictions', () => {

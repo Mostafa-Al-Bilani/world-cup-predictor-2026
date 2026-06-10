@@ -1,10 +1,10 @@
-import { CalendarDays, MapPin, Trophy } from 'lucide-react';
-import { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
-import { PredictionButton } from './PredictionButton';
-import { StatusBadge } from './StatusBadge';
-import { TeamFlag } from './TeamFlag';
-import { formatDateTime, isMatchLocked } from '../utils/date';
+import { CalendarDays, MapPin, Trophy } from "lucide-react";
+import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
+import { PredictionButton } from "./PredictionButton";
+import { StatusBadge } from "./StatusBadge";
+import { TeamFlag } from "./TeamFlag";
+import { formatDateTime, isMatchLocked } from "../utils/date";
 import {
   getPredictedScoreLabel,
   getPredictionLabel,
@@ -12,23 +12,53 @@ import {
   getPredictionStatus,
   getPredictionTotalPoints,
   matchAllowsDraw,
-} from '../utils/predictions';
+} from "../utils/predictions";
 
-export function MatchCard({ match, prediction, onPredict, isAuthenticated, busy }) {
-  const locked = isMatchLocked(match) || match.status !== 'upcoming';
+export function MatchCard({
+  match,
+  prediction,
+  onPredict,
+  isAuthenticated,
+  busy,
+}) {
+  const locked = isMatchLocked(match) || match.status !== "upcoming";
   const canDraw = matchAllowsDraw(match);
   const predictionStatus = getPredictionStatus(match, prediction);
-  const [draft, setDraft] = useState({ result: '', homeScore: '', awayScore: '' });
+  const [draft, setDraft] = useState({
+    result: "",
+    homeScore: "",
+    awayScore: "",
+  });
 
   useEffect(() => {
     setDraft({
-      result: prediction?.predicted_result ?? '',
-      homeScore: prediction?.predicted_home_score ?? '',
-      awayScore: prediction?.predicted_away_score ?? '',
+      result: prediction?.predicted_result ?? "",
+      homeScore: prediction?.predicted_home_score ?? "",
+      awayScore: prediction?.predicted_away_score ?? "",
     });
-  }, [prediction?.predicted_away_score, prediction?.predicted_home_score, prediction?.predicted_result]);
+  }, [
+    prediction?.predicted_away_score,
+    prediction?.predicted_home_score,
+    prediction?.predicted_result,
+  ]);
+
+  const hasCompleteScore =
+    draft.homeScore !== "" &&
+    draft.homeScore !== null &&
+    draft.homeScore !== undefined &&
+    draft.awayScore !== "" &&
+    draft.awayScore !== null &&
+    draft.awayScore !== undefined;
 
   const savePrediction = (nextResult = draft.result) => {
+    if (!nextResult) {
+      return;
+    }
+
+    if (!hasCompleteScore) {
+      return;
+    }
+
     onPredict(match, nextResult, {
       predictedHomeScore: draft.homeScore,
       predictedAwayScore: draft.awayScore,
@@ -37,7 +67,6 @@ export function MatchCard({ match, prediction, onPredict, isAuthenticated, busy 
 
   const selectResult = (result) => {
     setDraft((current) => ({ ...current, result }));
-    savePrediction(result);
   };
 
   const updateScore = (field, value) => {
@@ -62,11 +91,15 @@ export function MatchCard({ match, prediction, onPredict, isAuthenticated, busy 
           <TeamName name={match.team_b} align="right" />
         </div>
 
-        {match.status === 'finished' || match.status === 'live' || match.status === 'halftime' ? (
+        {match.status === "finished" ||
+        match.status === "live" ||
+        match.status === "halftime" ? (
           <div className="mt-5 rounded-lg border border-white/10 bg-white/5 px-4 py-3 text-center text-2xl font-black">
-            {match.team_a_score ?? '-'} : {match.team_b_score ?? '-'}
-            {match.status === 'live' && match.elapsed ? (
-              <span className="ml-2 align-middle text-xs font-bold text-emerald-200">{match.elapsed} min</span>
+            {match.team_a_score ?? "-"} : {match.team_b_score ?? "-"}
+            {match.status === "live" && match.elapsed ? (
+              <span className="ml-2 align-middle text-xs font-bold text-emerald-200">
+                {match.elapsed} min
+              </span>
             ) : null}
           </div>
         ) : null}
@@ -87,72 +120,94 @@ export function MatchCard({ match, prediction, onPredict, isAuthenticated, busy 
         </div>
 
         <div className="mt-5 rounded-lg border border-white/10 bg-white/[0.04] p-4">
-          <p className="text-xs font-bold uppercase tracking-[0.22em] text-slate-400">{getPredictionModeLabel(match)}</p>
-          <p className="mt-2 text-sm font-bold text-white">{getPredictionLabel(match, prediction?.predicted_result)}</p>
-          <p className="mt-1 text-sm text-slate-300">Score pick: {getPredictedScoreLabel(prediction)}</p>
+          <p className="text-xs font-bold uppercase tracking-[0.22em] text-slate-400">
+            {getPredictionModeLabel(match)}
+          </p>
+          <p className="mt-2 text-sm font-bold text-white">
+            {getPredictionLabel(match, prediction?.predicted_result)}
+          </p>
+          <p className="mt-1 text-sm text-slate-300">
+            Score pick: {getPredictedScoreLabel(prediction)}
+          </p>
           {isAuthenticated ? (
             <div className="mt-4 space-y-4">
               <div className="flex flex-wrap gap-2">
                 <PredictionButton
                   label={<PredictionLabel name={match.team_a} />}
-                  selected={draft.result === 'team_a'}
+                  selected={draft.result === "team_a"}
                   disabled={locked || busy}
-                  onClick={() => selectResult('team_a')}
+                  onClick={() => selectResult("team_a")}
                 />
                 {canDraw ? (
                   <PredictionButton
                     label="Draw"
-                    selected={draft.result === 'draw'}
+                    selected={draft.result === "draw"}
                     disabled={locked || busy}
-                    onClick={() => selectResult('draw')}
+                    onClick={() => selectResult("draw")}
                   />
                 ) : null}
                 <PredictionButton
                   label={<PredictionLabel name={match.team_b} />}
-                  selected={draft.result === 'team_b'}
+                  selected={draft.result === "team_b"}
                   disabled={locked || busy}
-                  onClick={() => selectResult('team_b')}
+                  onClick={() => selectResult("team_b")}
                 />
               </div>
 
               <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_84px_84px] sm:items-end">
                 <p className="text-xs leading-5 text-slate-400">
-                  Optional exact-score bonus: enter both scores for a chance at +1 extra point.
+                  Score prediction is required. Enter both scores before saving
+                  your prediction.
                 </p>
                 <ScoreInput
                   label={match.team_a}
                   value={draft.homeScore}
                   disabled={locked || busy}
-                  onChange={(value) => updateScore('homeScore', value)}
+                  onChange={(value) => updateScore("homeScore", value)}
                 />
                 <ScoreInput
                   label={match.team_b}
                   value={draft.awayScore}
                   disabled={locked || busy}
-                  onChange={(value) => updateScore('awayScore', value)}
+                  onChange={(value) => updateScore("awayScore", value)}
                 />
               </div>
 
               <button
                 type="button"
-                disabled={locked || busy || !draft.result}
+                disabled={locked || busy || !draft.result || !hasCompleteScore}
                 onClick={() => savePrediction()}
                 className="w-full rounded-full border border-emerald-300/40 px-4 py-2 text-sm font-black text-emerald-100 transition hover:bg-emerald-300 hover:text-emerald-950 disabled:cursor-not-allowed disabled:opacity-60"
               >
-                {busy ? 'Saving...' : 'Save prediction'}
+                {busy ? "Saving..." : "Save prediction"}
               </button>
             </div>
           ) : (
-            <Link className="mt-4 inline-flex text-sm font-bold text-emerald-300 hover:text-white" to="/login">
+            <Link
+              className="mt-4 inline-flex text-sm font-bold text-emerald-300 hover:text-white"
+              to="/login"
+            >
               Log in to predict
             </Link>
           )}
 
-          {match.status === 'finished' && prediction ? (
+          {match.status === "finished" && prediction ? (
             <div className="mt-4 grid gap-2 text-xs sm:grid-cols-3">
-              <PointPill label="Winner" value={prediction.winner_points ?? Number(prediction.is_correct === true)} />
-              <PointPill label="Exact bonus" value={prediction.exact_score_points ?? 0} />
-              <PointPill label="Total" value={getPredictionTotalPoints(prediction)} />
+              <PointPill
+                label="Winner"
+                value={
+                  prediction.winner_points ??
+                  Number(prediction.is_correct === true)
+                }
+              />
+              <PointPill
+                label="Exact bonus"
+                value={prediction.exact_score_points ?? 0}
+              />
+              <PointPill
+                label="Total"
+                value={getPredictionTotalPoints(prediction)}
+              />
             </div>
           ) : null}
         </div>
@@ -164,7 +219,9 @@ export function MatchCard({ match, prediction, onPredict, isAuthenticated, busy 
 function ScoreInput({ label, value, disabled, onChange }) {
   return (
     <label className="block">
-      <span className="block truncate text-xs font-bold text-slate-400">{label}</span>
+      <span className="block truncate text-xs font-bold text-slate-400">
+        {label}
+      </span>
       <input
         type="number"
         min="0"
@@ -185,7 +242,9 @@ function PointPill({ label, value }) {
   return (
     <div className="rounded-lg bg-slate-950/70 px-3 py-2 text-center">
       <p className="font-black text-white">{value}</p>
-      <p className="mt-1 font-bold uppercase tracking-wide text-slate-400">{label}</p>
+      <p className="mt-1 font-bold uppercase tracking-wide text-slate-400">
+        {label}
+      </p>
     </div>
   );
 }
@@ -199,15 +258,17 @@ function PredictionLabel({ name }) {
   );
 }
 
-function TeamName({ name, align = 'left' }) {
+function TeamName({ name, align = "left" }) {
   return (
-    <div className={align === 'right' ? 'min-w-0 text-right' : 'min-w-0'}>
+    <div className={align === "right" ? "min-w-0 text-right" : "min-w-0"}>
       <TeamFlag
-        className={align === 'right' ? 'mb-3 ml-auto' : 'mb-3'}
+        className={align === "right" ? "mb-3 ml-auto" : "mb-3"}
         size="xl"
         teamName={name}
       />
-      <h3 className="break-words text-lg font-black text-white sm:text-xl">{name}</h3>
+      <h3 className="break-words text-lg font-black text-white sm:text-xl">
+        {name}
+      </h3>
     </div>
   );
 }

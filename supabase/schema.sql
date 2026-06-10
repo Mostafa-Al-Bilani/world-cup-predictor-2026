@@ -370,6 +370,27 @@ create trigger profiles_protect_trusted_fields
 before update on public.profiles
 for each row execute function public.protect_profile_trusted_fields();
 
+create or replace function public.prevent_user_admin_flag_change()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if old.is_admin is distinct from new.is_admin
+     and coalesce(auth.role(), '') <> 'service_role' then
+    raise exception 'Only service role can change admin status.';
+  end if;
+
+  return new;
+end;
+$$;
+
+drop trigger if exists profiles_prevent_user_admin_flag_change on public.profiles;
+create trigger profiles_prevent_user_admin_flag_change
+before update on public.profiles
+for each row execute function public.prevent_user_admin_flag_change();
+
 create or replace function public.match_allows_draw(match_stage text)
 returns boolean
 language sql
@@ -615,25 +636,52 @@ declare
   current_status text;
   current_stage text;
 begin
-  select match_date, status, stage into starts_at, current_status, current_stage
+  select match_date, status, stage
+  into starts_at, current_status, current_stage
   from public.matches
   where id = new.match_id;
 
   if starts_at is null then
-    raise exception 'Match not found';
+    raise exception 'Match not found.';
   end if;
 
-  if starts_at <= now() or current_status <> 'upcoming' then
-    raise exception 'Predictions are locked after match kickoff';
+  if starts_at <= now() then
+    raise exception 'Predictions are locked because the match has already started.';
+  end if;
+
+  if current_status <> 'upcoming' then
+    raise exception 'Predictions are locked because this match is not open for predictions.';
   end if;
 
   if new.predicted_result = 'draw' and not public.match_allows_draw(current_stage) then
-    raise exception 'Draw predictions are only allowed for group-stage matches';
+    raise exception 'Draw predictions are only allowed for group-stage matches.';
   end if;
 
   return new;
 end;
 $$;
+
+create or replace function public.prevent_incomplete_score_predictions()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if new.predicted_home_score is null or new.predicted_away_score is null then
+    raise exception 'Enter both scores before saving your prediction.';
+  end if;
+
+  return new;
+end;
+$$;
+
+drop trigger if exists predictions_require_scores_trigger on public.predictions;
+
+create trigger predictions_require_scores_trigger
+before insert or update on public.predictions
+for each row
+execute function public.prevent_incomplete_score_predictions();
 
 drop trigger if exists predictions_prevent_locked_insert on public.predictions;
 create trigger predictions_prevent_locked_insert
@@ -1706,16 +1754,33 @@ on public.stage_predictions for all
 using (public.is_admin())
 with check (public.is_admin());
 
+grant select on public.matches to anon, authenticated;
 grant select on public.leaderboard_profiles to anon, authenticated;
 grant select on public.latest_successful_sync to anon, authenticated;
 grant select, insert on public.sync_logs to authenticated;
+
+revoke insert, update, delete on public.matches from anon;
+revoke insert, update, delete on public.matches from authenticated;
+revoke insert, update, delete on public.groups from anon;
+revoke insert, update, delete on public.group_members from anon;
+revoke insert, update, delete on public.group_invitations from anon;
+revoke insert, update, delete on public.world_cup_winner_predictions from anon;
+revoke insert, update, delete on public.stage_predictions from anon;
+revoke insert, update, delete on public.groups from authenticated;
+revoke insert, update, delete on public.group_members from authenticated;
+revoke insert, update, delete on public.group_invitations from authenticated;
+revoke insert, update, delete on public.world_cup_winner_predictions from authenticated;
+revoke insert, update, delete on public.stage_predictions from authenticated;
+
 revoke execute on function public.recalculate_match_points(uuid) from PUBLIC;
+revoke execute on function public.recalculate_match_points(uuid) from authenticated;
 revoke execute on function public.recalculate_profile_totals(uuid) from PUBLIC;
 revoke execute on function public.generate_group_invite_code() from PUBLIC;
 revoke execute on function public.set_world_cup_winner_prediction(text) from PUBLIC;
 revoke execute on function public.recalculate_champion_points() from PUBLIC;
 revoke execute on function public.save_stage_prediction(text, text[]) from PUBLIC;
 revoke execute on function public.recalculate_stage_prediction_points(text) from PUBLIC;
+revoke execute on function public.recalculate_stage_prediction_points(text) from authenticated;
 revoke execute on function public.search_profiles_for_invite(uuid, text) from PUBLIC;
 revoke execute on function public.create_private_group(text, text) from PUBLIC;
 revoke execute on function public.join_group_by_invite_code(text) from PUBLIC;
@@ -1726,22 +1791,17 @@ revoke execute on function public.leave_group(uuid) from PUBLIC;
 revoke execute on function public.regenerate_group_invite_code(uuid) from PUBLIC;
 revoke execute on function public.update_group_details(uuid, text, text) from PUBLIC;
 revoke execute on function public.delete_private_group(uuid) from PUBLIC;
-grant execute on function public.recalculate_match_points(uuid) to authenticated;
-grant execute on function public.recalculate_match_points(uuid) to service_role;
-revoke insert, update, delete on public.groups from authenticated;
-revoke insert, update, delete on public.group_members from authenticated;
-revoke insert, update, delete on public.group_invitations from authenticated;
-revoke insert, update, delete on public.world_cup_winner_predictions from authenticated;
-revoke insert, update, delete on public.stage_predictions from authenticated;
+
 grant select on public.groups to authenticated;
 grant select on public.group_members to authenticated;
 grant select on public.group_invitations to authenticated;
 grant select on public.world_cup_winner_predictions to authenticated;
 grant select on public.stage_predictions to authenticated;
+
+grant execute on function public.recalculate_match_points(uuid) to service_role;
 grant execute on function public.set_world_cup_winner_prediction(text) to authenticated;
 grant execute on function public.recalculate_champion_points() to service_role;
 grant execute on function public.save_stage_prediction(text, text[]) to authenticated;
-grant execute on function public.recalculate_stage_prediction_points(text) to authenticated;
 grant execute on function public.recalculate_stage_prediction_points(text) to service_role;
 grant execute on function public.search_profiles_for_invite(uuid, text) to authenticated;
 grant execute on function public.create_private_group(text, text) to authenticated;
@@ -1753,3 +1813,4 @@ grant execute on function public.leave_group(uuid) to authenticated;
 grant execute on function public.regenerate_group_invite_code(uuid) to authenticated;
 grant execute on function public.update_group_details(uuid, text, text) to authenticated;
 grant execute on function public.delete_private_group(uuid) to authenticated;
+

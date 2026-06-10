@@ -85,8 +85,8 @@ export function normalizePredictionScorePair(homeScore, awayScore) {
   const predictedHomeScore = normalizePredictionScore(homeScore, 'Home team score');
   const predictedAwayScore = normalizePredictionScore(awayScore, 'Away team score');
 
-  if ((predictedHomeScore === null) !== (predictedAwayScore === null)) {
-    throw new Error('Enter both scores or leave both score fields blank.');
+  if (predictedHomeScore === null || predictedAwayScore === null) {
+    throw new Error('Enter both scores before saving your prediction.');
   }
 
   return {
