@@ -12,11 +12,13 @@ Use this checklist after each production deploy and after every Supabase schema 
 - Confirm RLS is enabled on `group_members`.
 - Confirm RLS is enabled on `group_invitations`.
 - Confirm RLS is enabled on `world_cup_winner_predictions`.
+- Confirm RLS is enabled on `stage_predictions`.
 - Confirm `matches` has public read and admin-only writes.
 - Confirm `predictions` has owner-only read/write policies plus admin scoring access.
 - Confirm regular users cannot update trusted prediction point fields.
 - Confirm regular users cannot update profile totals, champion points, admin flags, or emails.
 - Confirm champion predictions are one per user and locked after first selection.
+- Confirm stage predictions are one per user per stage, locked at the first UTC kickoff, and regular users cannot update scoring fields.
 - Confirm `profiles` does not expose emails publicly.
 - Confirm `leaderboard_profiles` exposes only safe leaderboard fields.
 - Confirm group tables are readable only by accepted members, invitees, or managers as intended.

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import toast from 'react-hot-toast';
-import { Activity, CalendarCheck, CalendarClock, Goal, RefreshCw, Users } from 'lucide-react';
+import { Activity, CalendarCheck, CalendarClock, Goal, RefreshCw, Trophy, Users } from 'lucide-react';
 import { AdminMatchForm } from '../components/AdminMatchForm';
 import { ConfirmationModal } from '../components/ConfirmationModal';
 import { EmptyState } from '../components/EmptyState';
@@ -11,6 +11,7 @@ import { fixtureSyncService } from '../services/fixtureSyncService';
 import { matchService } from '../services/matchService';
 import { predictionService } from '../services/predictionService';
 import { profileService } from '../services/profileService';
+import { stagePredictionService } from '../services/stagePredictionService';
 import { syncLogService } from '../services/syncLogService';
 import { formatDateTime } from '../utils/date';
 import { getSafeErrorMessage } from '../utils/errors';
@@ -26,6 +27,8 @@ export function AdminDashboardPage() {
   const [syncing, setSyncing] = useState(false);
   const [syncSummary, setSyncSummary] = useState(null);
   const [latestSyncLog, setLatestSyncLog] = useState(null);
+  const [stageSummary, setStageSummary] = useState([]);
+  const [recalculatingStages, setRecalculatingStages] = useState(false);
   const [matchSearch, setMatchSearch] = useState('');
   const [matchStatusFilter, setMatchStatusFilter] = useState('all');
 
@@ -37,9 +40,11 @@ export function AdminDashboardPage() {
         profileService.getAdminStats(),
         syncLogService.getLatestAdminSyncLog().catch(() => null),
       ]);
+      const bracketSummary = await stagePredictionService.getAdminSummary(matchRows).catch(() => []);
       setMatches(matchRows);
       setStats(statRows);
       setLatestSyncLog(syncLog);
+      setStageSummary(bracketSummary);
     } catch (error) {
       toast.error(getSafeErrorMessage(error, 'Could not load admin dashboard.'));
     } finally {
@@ -121,6 +126,19 @@ export function AdminDashboardPage() {
     }
   };
 
+  const recalculateStagePredictions = async () => {
+    setRecalculatingStages(true);
+    try {
+      const updatedCount = await stagePredictionService.recalculateStagePredictions();
+      toast.success(`Bracket scoring recalculated for ${updatedCount ?? 0} prediction rows.`);
+      await load();
+    } catch (error) {
+      toast.error(getSafeErrorMessage(error, 'Could not recalculate bracket predictions.'));
+    } finally {
+      setRecalculatingStages(false);
+    }
+  };
+
   if (loading) return <LoadingSpinner label="Loading admin controls" />;
 
   return (
@@ -161,14 +179,58 @@ export function AdminDashboardPage() {
       {latestSyncLog ? <SyncLogCard log={latestSyncLog} /> : null}
 
       {stats ? (
-        <section className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
+        <section className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
           <StatCard icon={Users} label="Users" value={stats.totalUsers} />
           <StatCard icon={CalendarCheck} label="Matches" value={stats.totalMatches} />
           <StatCard icon={Goal} label="Predictions" value={stats.totalPredictions} />
+          <StatCard icon={Trophy} label="Brackets" value={stats.totalStagePredictions ?? 0} />
           <StatCard icon={Activity} label="Finished" value={stats.finishedMatches} />
           <StatCard icon={CalendarClock} label="Upcoming" value={stats.upcomingMatches} />
         </section>
       ) : null}
+
+      <section className="mt-8 rounded-lg border border-white/10 bg-slate-950/72 p-5">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+          <div>
+            <p className="text-xs font-black uppercase tracking-[0.22em] text-slate-400">Bracket scoring</p>
+            <h2 className="mt-2 text-2xl font-black text-white">Stage prediction status</h2>
+            <p className="mt-2 max-w-2xl text-sm text-slate-300">
+              Submissions are locked by first kickoff for each stage. Recalculation only scores stages whose actual teams
+              are known from synced fixtures.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={recalculateStagePredictions}
+            disabled={recalculatingStages || !isSupabaseConfigured}
+            className="inline-flex items-center justify-center gap-2 rounded-full border border-gold-300/40 px-5 py-3 text-sm font-black text-gold-100 transition hover:bg-gold-300 hover:text-slate-950 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            <RefreshCw size={16} className={recalculatingStages ? 'animate-spin' : undefined} />
+            {recalculatingStages ? 'Recalculating...' : 'Recalculate Brackets'}
+          </button>
+        </div>
+        {stageSummary.length ? (
+          <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+            {stageSummary.map((stage) => (
+              <div key={stage.key} className="rounded-lg border border-white/10 bg-white/[0.04] p-4">
+                <p className="font-black text-white">{stage.label}</p>
+                <p className="mt-1 text-xs text-slate-400">{stage.requiredCount} teams, {stage.pointsPerTeam} pts each</p>
+                <div className="mt-3 grid grid-cols-2 gap-2 text-sm">
+                  <MiniMetric label="Submitted" value={stage.submittedCount ?? 0} />
+                  <MiniMetric label="Scored" value={stage.scoredCount ?? 0} />
+                </div>
+                <p className="mt-3 text-xs text-slate-400">
+                  {stage.lockAt ? `Locks ${formatDateTime(stage.lockAt)}` : 'Lock time pending'}
+                </p>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="mt-5">
+            <EmptyState title="No bracket data yet" description="Stage prediction status appears after the database migration is applied." />
+          </div>
+        )}
+      </section>
 
       <section className="mt-8 grid gap-6 lg:grid-cols-[420px_1fr]">
         <AdminMatchForm

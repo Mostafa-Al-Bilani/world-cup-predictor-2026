@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { EmptyState } from '../components/EmptyState';
 import { LoadingSpinner } from '../components/LoadingSpinner';
@@ -92,6 +93,21 @@ export function MyPredictionsPage() {
           </div>
         </section>
       ) : null}
+
+      <section className="mt-6 rounded-lg border border-emerald-300/30 bg-emerald-300/10 p-5">
+        <p className="text-xs font-black uppercase tracking-[0.22em] text-emerald-200">Bracket predictions</p>
+        <div className="mt-2 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <p className="text-sm text-slate-200">
+            Pick which teams advance before each knockout stage locks. These picks are optional and scored separately.
+          </p>
+          <Link
+            to="/bracket"
+            className="inline-flex justify-center rounded-full bg-emerald-300 px-4 py-2 text-sm font-black text-emerald-950 transition hover:bg-white"
+          >
+            Open bracket
+          </Link>
+        </div>
+      </section>
 
       {rows.length ? (
         <div className="mt-8 overflow-hidden rounded-lg border border-white/10 bg-slate-950/72">

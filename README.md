@@ -14,8 +14,9 @@ This is a fan project. It does not use official FIFA logos, mascots, protected g
 - One prediction per user per match with result, optional exact score, duplicate prevention, and UTC kickoff locking.
 - Group-stage draw predictions and knockout final-winner predictions.
 - Locked World Cup champion pick worth 3 tournament points.
+- Bracket predictions for pre-round advancement picks through the knockout stages.
 - Public Supabase-backed scoreboard with top-three podium, rank table, point breakdown, accuracy, and current-user highlight.
-- My Predictions dashboard with status filters, exact score picks, champion pick, and earned points.
+- My Predictions dashboard with status filters, exact score picks, champion pick, bracket prompt, and earned points.
 - Private friend groups with invite codes, invitations, members-only leaderboards, and owner controls.
 - Admin-only dashboard for adding, editing, deleting, finishing, and recalculating matches.
 - Admin-only Sync Fixtures button using openfootball World Cup 2026 JSON data.
@@ -100,6 +101,7 @@ The schema creates:
 - `matches`: fixtures, live/final status, scores, result, venue, elapsed time, halftime score, and external fixture references.
 - `predictions`: one prediction per user per match, including result pick, optional exact score, and trusted point fields.
 - `world_cup_winner_predictions`: one locked champion pick per user.
+- `stage_predictions`: one bracket advancement prediction per user per knockout stage.
 - `sync_logs`: provider sync audit trail for scheduled and manual fixture syncs.
 - `groups`: private prediction groups with owners and invite codes.
 - `group_members`: accepted group members and roles.
@@ -109,6 +111,8 @@ The schema creates:
 - `recalculate_match_points(target_match_id uuid)`: admin/service-role point recalculation for finished matches.
 - `recalculate_champion_points()`: admin/service-role champion point recalculation after the final.
 - `set_world_cup_winner_prediction(team_name text)`: authenticated champion-pick RPC that locks the pick after selection.
+- `save_stage_prediction(target_stage text, selected_teams text[])`: authenticated bracket prediction RPC with count/team/lock validation.
+- `recalculate_stage_prediction_points(target_stage text default null)`: admin/service-role bracket point recalculation.
 
 RLS is enabled on all core tables. Users can manage only their own unlocked predictions. Users cannot update trusted point fields from the browser. Admins and service-role sync logic can manage matches and recalculate points.
 
@@ -120,7 +124,7 @@ Private group data is protected with RLS:
 - writes use Supabase RPC functions for create, join, invite, accept/decline, leave, remove, update, regenerate code, and delete;
 - regular users cannot add themselves to a private group without a valid invite code or invitation.
 
-If you already ran an older schema, rerun the latest `supabase/schema.sql`. It uses `add column if not exists` and `create table if not exists` for the new sync fields/logs, score prediction fields, champion prediction table, and private group tables.
+If you already ran an older schema, rerun the latest `supabase/schema.sql`. It uses `add column if not exists` and `create table if not exists` for the new sync fields/logs, score prediction fields, champion prediction table, bracket prediction table, and private group tables.
 
 ## Scoring Rules
 
@@ -145,11 +149,26 @@ The World Cup champion pick is separate:
 - Correct champion pick: `3` points.
 - Champion points are added to the same leaderboard totals as match points.
 
+Bracket predictions are optional pre-round advancement picks. Users can save one prediction per stage before that stage starts:
+
+- Round of 32: select `32` teams, `1` point per correct team.
+- Round of 16: select `16` teams, `2` points per correct team.
+- Quarter-finals: select `8` teams, `3` points per correct team.
+- Semi-finals: select `4` teams, `4` points per correct team.
+- Finalists: select `2` teams, `5` points per correct team.
+
+Each bracket stage locks at the UTC kickoff timestamp of the first match in that stage. The UI displays that lock time in the visitor's local timezone. If a stage has no scheduled matches yet, the UI shows that it locks when the stage begins.
+
+Bracket scoring uses synced fixture data: once the actual non-placeholder teams appear in that stage's matches, `recalculate_stage_prediction_points` compares saved teams to actual teams and overwrites `points_awarded` idempotently. It does not infer from placeholders and does not score incomplete stages.
+
+Champion scoring remains the existing `3` point champion pick. It is not duplicated inside bracket predictions.
+
 Profile totals include:
 
 - `match_winner_points`
 - `exact_score_points`
 - `champion_points`
+- `bracket_points`
 - `total_points`
 
 ## Private Groups
@@ -173,7 +192,7 @@ Group owners can:
 - remove members;
 - delete the group.
 
-Only accepted members appear in a group leaderboard. The group leaderboard uses the same `leaderboard_profiles` totals as the public scoreboard, filtered to accepted members of that group.
+Only accepted members appear in a group leaderboard. The group leaderboard uses the same `leaderboard_profiles` totals as the public scoreboard, including bracket points, filtered to accepted members of that group.
 
 ## Timezone Handling
 
@@ -242,7 +261,7 @@ The script:
 - validates required server environment variables;
 - never prints secrets;
 - normalizes provider data into the existing `matches` table;
-- matches existing rows by provider fixture id, external reference, match number, date, and team names;
+- matches existing rows by provider fixture id, external reference, match number, date, canonical stage/team aliases, and team names;
 - matches knockout placeholder fixtures by kickoff and stage so labels like `2A` and `Group A 2nd Place` do not create duplicate cards;
 - deletes no-prediction duplicate match rows created by previous provider placeholder mismatches;
 - avoids overwriting useful existing values with null or empty provider values;
@@ -250,6 +269,7 @@ The script:
 - updates changed kickoff time, teams, stage, status, elapsed time, halftime score, venue, city, score, and result;
 - detects newly finished or changed-result matches;
 - calls `recalculate_match_points` only for affected finished matches;
+- calls `recalculate_stage_prediction_points` after sync so eligible bracket stages are scored;
 - does not award points while a match is live or at halftime;
 - writes a persistent `sync_logs` row.
 

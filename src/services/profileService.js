@@ -10,13 +10,17 @@ const recalculateProfile = (profile, store) => {
   const exactScorePoints = userPredictions.reduce((sum, prediction) => sum + (prediction.exact_score_points ?? 0), 0);
   const championPrediction = store.championPredictions?.find((prediction) => prediction.user_id === profile.id);
   const championPoints = championPrediction?.points_awarded ?? 0;
+  const bracketPoints = (store.stagePredictions ?? [])
+    .filter((prediction) => prediction.user_id === profile.id)
+    .reduce((sum, prediction) => sum + (prediction.points_awarded ?? 0), 0);
 
   return {
     ...profile,
-    total_points: matchWinnerPoints + exactScorePoints + championPoints,
+    total_points: matchWinnerPoints + exactScorePoints + championPoints + bracketPoints,
     match_winner_points: matchWinnerPoints,
     exact_score_points: exactScorePoints,
     champion_points: championPoints,
+    bracket_points: bracketPoints,
     correct_predictions: correct,
     total_predictions: userPredictions.length,
   };
@@ -42,13 +46,13 @@ export const profileService = {
 
     const { data, error } = await supabase
       .from('leaderboard_profiles')
-      .select('id, username, total_points, match_winner_points, exact_score_points, champion_points, correct_predictions, total_predictions, created_at')
+      .select('id, username, total_points, match_winner_points, exact_score_points, champion_points, bracket_points, correct_predictions, total_predictions, created_at')
       .order('total_points', { ascending: false })
       .order('correct_predictions', { ascending: false });
 
     if (!error) return sortLeaderboardUsers(data ?? []);
 
-    if (/match_winner_points|exact_score_points|champion_points|column .* does not exist/i.test(error.message ?? '')) {
+    if (/match_winner_points|exact_score_points|champion_points|bracket_points|column .* does not exist/i.test(error.message ?? '')) {
       const { data: legacyData, error: legacyError } = await supabase
         .from('leaderboard_profiles')
         .select('id, username, total_points, correct_predictions, total_predictions, created_at')
@@ -68,15 +72,17 @@ export const profileService = {
         totalUsers: store.profiles.length,
         totalMatches: store.matches.length,
         totalPredictions: store.predictions.length,
+        totalStagePredictions: store.stagePredictions.length,
         finishedMatches: store.matches.filter((match) => match.status === 'finished').length,
         upcomingMatches: store.matches.filter((match) => match.status === 'upcoming').length,
       };
     }
 
-    const [profiles, matches, predictions] = await Promise.all([
+    const [profiles, matches, predictions, stagePredictions] = await Promise.all([
       supabase.from('profiles').select('id', { count: 'exact', head: true }),
       supabase.from('matches').select('id,status', { count: 'exact' }),
       supabase.from('predictions').select('id', { count: 'exact', head: true }),
+      supabase.from('stage_predictions').select('id', { count: 'exact', head: true }),
     ]);
 
     if (profiles.error) throw profiles.error;
@@ -89,6 +95,7 @@ export const profileService = {
       totalUsers: profiles.count ?? 0,
       totalMatches: matches.count ?? 0,
       totalPredictions: predictions.count ?? 0,
+      totalStagePredictions: stagePredictions.error ? 0 : stagePredictions.count ?? 0,
       finishedMatches: matchRows.filter((match) => match.status === 'finished').length,
       upcomingMatches: matchRows.filter((match) => match.status === 'upcoming').length,
     };

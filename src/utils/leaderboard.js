@@ -9,7 +9,8 @@ export const normalizeLeaderboardUser = (user) => {
   const matchWinnerPoints = numberOrZero(user?.match_winner_points);
   const exactScorePoints = numberOrZero(user?.exact_score_points);
   const championPoints = numberOrZero(user?.champion_points);
-  const totalPoints = numberOrZero(user?.total_points ?? matchWinnerPoints + exactScorePoints + championPoints);
+  const bracketPoints = numberOrZero(user?.bracket_points);
+  const totalPoints = numberOrZero(user?.total_points ?? matchWinnerPoints + exactScorePoints + championPoints + bracketPoints);
   const correctPredictions = numberOrZero(user?.correct_predictions);
   const totalPredictions = numberOrZero(user?.total_predictions);
 
@@ -21,6 +22,7 @@ export const normalizeLeaderboardUser = (user) => {
     match_winner_points: matchWinnerPoints,
     exact_score_points: exactScorePoints,
     champion_points: championPoints,
+    bracket_points: bracketPoints,
     correct_predictions: correctPredictions,
     total_predictions: totalPredictions,
     accuracy: getAccuracy({

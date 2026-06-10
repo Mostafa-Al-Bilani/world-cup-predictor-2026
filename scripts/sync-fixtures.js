@@ -222,6 +222,20 @@ const recalculateMatches = async (supabase, matchIds) => {
   return { recalculated, failed, failures };
 };
 
+const recalculateStagePredictions = async (supabase) => {
+  const { data, error } = await supabase.rpc('recalculate_stage_prediction_points', { target_stage: null });
+
+  if (!error) {
+    return { recalculated: Number(data ?? 0), failed: 0, failures: [] };
+  }
+
+  if (/recalculate_stage_prediction_points|schema cache|function .* does not exist/i.test(error.message ?? '')) {
+    return { recalculated: 0, failed: 0, failures: [] };
+  }
+
+  return { recalculated: 0, failed: 1, failures: [`stage predictions: ${error.message}`] };
+};
+
 const getPredictionCountsByMatch = async (supabase) => {
   const { data, error } = await supabase.from('predictions').select('match_id');
   if (error) throw error;
@@ -320,9 +334,14 @@ const syncFixtures = async () => {
     }
 
     const recalculateSummary = await recalculateMatches(supabase, [...recalculateIds]);
+    const stageRecalculateSummary = await recalculateStagePredictions(supabase);
     const finishedAt = new Date().toISOString();
-    const failedCount = recalculateSummary.failed;
-    const errorMessage = [providerError && `Fallback used because primary provider failed: ${providerError}`, ...recalculateSummary.failures]
+    const failedCount = recalculateSummary.failed + stageRecalculateSummary.failed;
+    const errorMessage = [
+      providerError && `Fallback used because primary provider failed: ${providerError}`,
+      ...recalculateSummary.failures,
+      ...stageRecalculateSummary.failures,
+    ]
       .filter(Boolean)
       .join(' | ');
 
@@ -336,7 +355,7 @@ const syncFixtures = async () => {
       updated_count: updates.length,
       unchanged_count: fixtures.length - inserts.length - updates.length,
       deduplicated_count: duplicateDeleteIds.size,
-      recalculated_count: recalculateSummary.recalculated,
+      recalculated_count: recalculateSummary.recalculated + stageRecalculateSummary.recalculated,
       failed_count: failedCount,
       error_message: errorMessage || null,
     };

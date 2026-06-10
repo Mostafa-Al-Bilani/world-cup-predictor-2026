@@ -29,6 +29,7 @@ export function TopThreePodium({ users }) {
             <Metric label="Points" value={user.total_points} />
             <Metric label="Match" value={(user.match_winner_points ?? 0) + (user.exact_score_points ?? 0)} />
             <Metric label="Champion" value={user.champion_points ?? 0} />
+            <Metric label="Bracket" value={user.bracket_points ?? 0} />
             <Metric label="Accuracy" value={`${getAccuracy(user)}%`} />
           </div>
         </article>

@@ -65,7 +65,7 @@ export function ScoreboardPage() {
           <h1 className="mt-3 text-4xl font-black sm:text-5xl">Scoreboard</h1>
           <p className="mt-3 max-w-2xl text-slate-300">
             Correct match winner picks earn one point, exact scores add one bonus point, and a correct World Cup champion
-            pick adds three tournament points.
+            pick adds three tournament points. Bracket predictions add stage advancement points after qualifiers are known.
           </p>
           {latestSync ? (
             <p className="mt-3 text-sm text-slate-400">
@@ -87,6 +87,7 @@ export function ScoreboardPage() {
             className="rounded-lg border border-white/10 bg-white/5 px-4 py-3 text-sm outline-none focus:border-emerald-300"
           >
             <option value="total_points">Total points</option>
+            <option value="bracket_points">Bracket points</option>
             <option value="correct_predictions">Correct predictions</option>
             <option value="accuracy">Accuracy percentage</option>
           </select>

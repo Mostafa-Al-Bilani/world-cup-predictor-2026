@@ -7,6 +7,7 @@ import { ProtectedRoute } from './components/ProtectedRoute';
 import { AuthProvider } from './context/AuthContext';
 import { AppLayout } from './layouts/AppLayout';
 import { AdminDashboardPage } from './pages/AdminDashboardPage';
+import { BracketPredictionsPage } from './pages/BracketPredictionsPage';
 import { ChampionPickPage } from './pages/ChampionPickPage';
 import { ConfigurationErrorPage } from './pages/ConfigurationErrorPage';
 import { ForgotPasswordPage } from './pages/ForgotPasswordPage';
@@ -54,6 +55,14 @@ export function App() {
               element={
                 <ProtectedRoute>
                   <MyPredictionsPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="bracket"
+              element={
+                <ProtectedRoute>
+                  <BracketPredictionsPage />
                 </ProtectedRoute>
               }
             />

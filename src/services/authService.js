@@ -10,6 +10,7 @@ const makeProfile = ({ id, email, username, isAdmin = false }) => ({
   match_winner_points: 0,
   exact_score_points: 0,
   champion_points: 0,
+  bracket_points: 0,
   correct_predictions: 0,
   total_predictions: 0,
   is_admin: isAdmin,

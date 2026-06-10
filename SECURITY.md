@@ -41,6 +41,7 @@ Expected access:
 - `matches`: public read, admin-only writes.
 - `predictions`: authenticated users can read/write only their own input fields before kickoff; trusted point fields are protected by database triggers and admin/service-role recalculation.
 - `world_cup_winner_predictions`: authenticated users can read their own champion pick and create it through the locked RPC; champion points are trusted scoring data.
+- `stage_predictions`: authenticated users can read their own bracket picks and save through the stage RPC before lock; bracket scoring fields are trusted admin/service-role data.
 - `profiles`: users can read/update their own safe profile fields; trusted totals, admin flags, and email fields are protected by a database trigger for non-admin updates.
 - `leaderboard_profiles`: public read of safe leaderboard fields only.
 - `sync_logs`: admin read/insert from the browser; service role writes from GitHub Actions.
@@ -81,7 +82,7 @@ Before publishing changes:
 5. Confirm GitHub Pages uses real Supabase environment values.
 6. Confirm production does not enter local demo mode.
 7. Confirm protected Supabase actions fail when tried as another user.
-8. Confirm regular users cannot update `winner_points`, `exact_score_points`, `points_awarded`, `total_points`, `champion_points`, or profile totals from the browser.
+8. Confirm regular users cannot update `winner_points`, `exact_score_points`, `points_awarded`, `total_points`, `champion_points`, `bracket_points`, `correct_count`, `scored_at`, or profile totals from the browser.
 
 ## Supabase Auth Redirects
 

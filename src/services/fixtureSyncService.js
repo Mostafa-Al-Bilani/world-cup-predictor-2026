@@ -9,6 +9,7 @@ import {
   shouldRecalculateMatch,
 } from './fixtureNormalizer';
 import { isDemoMode, supabase } from './supabaseClient';
+import { stagePredictionService } from './stagePredictionService';
 
 const insertSyncLog = async (summary) => {
   const { error } = await supabase.from('sync_logs').insert({
@@ -102,7 +103,9 @@ export const fixtureSyncService = {
       }
 
       const recalculateSummary = await recalculateMatches([...recalculateIds]);
+      const stageRecalculated = await stagePredictionService.recalculateStagePredictions().catch(() => 0);
       const finishedAt = new Date().toISOString();
+      const recalculatedCount = recalculateSummary.recalculated + stageRecalculated;
       const summary = {
         provider_used: 'openfootball',
         fallback_used: false,
@@ -112,7 +115,7 @@ export const fixtureSyncService = {
         inserted_count: inserts.length,
         updated_count: updates.length,
         unchanged_count: fixtures.length - inserts.length - updates.length,
-        recalculated_count: recalculateSummary.recalculated,
+        recalculated_count: recalculatedCount,
         failed_count: recalculateSummary.failed,
         error_message: recalculateSummary.failed ? 'Some match point recalculations failed.' : null,
         total: fixtures.length,

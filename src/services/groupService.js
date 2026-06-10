@@ -22,6 +22,7 @@ const attachProfilesToMembers = (members, profiles) =>
       match_winner_points: 0,
       exact_score_points: 0,
       champion_points: 0,
+      bracket_points: 0,
       correct_predictions: 0,
       total_predictions: 0,
     };
@@ -249,7 +250,7 @@ export const groupService = {
 
     const { data: profiles, error: profileError } = await supabase
       .from('leaderboard_profiles')
-      .select('id,username,total_points,match_winner_points,exact_score_points,champion_points,correct_predictions,total_predictions,created_at')
+      .select('id,username,total_points,match_winner_points,exact_score_points,champion_points,bracket_points,correct_predictions,total_predictions,created_at')
       .in('id', userIds);
 
     if (profileError) throw profileError;
@@ -286,7 +287,7 @@ export const groupService = {
 
     const { data: profiles, error: profileError } = await supabase
       .from('leaderboard_profiles')
-      .select('id,username,total_points,match_winner_points,exact_score_points,champion_points,correct_predictions,total_predictions,created_at')
+      .select('id,username,total_points,match_winner_points,exact_score_points,champion_points,bracket_points,correct_predictions,total_predictions,created_at')
       .in('id', userIds);
 
     if (profileError) throw profileError;

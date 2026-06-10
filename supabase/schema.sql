@@ -8,6 +8,7 @@ create table if not exists public.profiles (
   match_winner_points integer not null default 0,
   exact_score_points integer not null default 0,
   champion_points integer not null default 0,
+  bracket_points integer not null default 0,
   correct_predictions integer not null default 0,
   total_predictions integer not null default 0,
   is_admin boolean not null default false,
@@ -88,6 +89,7 @@ create table if not exists public.predictions (
 alter table public.profiles add column if not exists match_winner_points integer not null default 0;
 alter table public.profiles add column if not exists exact_score_points integer not null default 0;
 alter table public.profiles add column if not exists champion_points integer not null default 0;
+alter table public.profiles add column if not exists bracket_points integer not null default 0;
 alter table public.matches drop constraint if exists matches_status_check;
 alter table public.matches add constraint matches_status_check
 check (status in ('upcoming', 'live', 'halftime', 'finished', 'postponed', 'cancelled'));
@@ -136,6 +138,25 @@ create table if not exists public.world_cup_winner_predictions (
   constraint world_cup_winner_predictions_team_not_blank check (length(trim(predicted_team)) > 0)
 );
 
+create table if not exists public.stage_predictions (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references public.profiles(id) on delete cascade,
+  stage text not null,
+  selected_teams text[] not null default '{}',
+  correct_teams text[] not null default '{}',
+  locked_at timestamptz,
+  points_awarded integer not null default 0,
+  correct_count integer not null default 0,
+  scored_at timestamptz,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  constraint stage_predictions_stage_check check (stage in ('round_of_32', 'round_of_16', 'quarter_finals', 'semi_finals', 'finalists')),
+  constraint stage_predictions_unique_user_stage unique (user_id, stage),
+  constraint stage_predictions_points_check check (points_awarded >= 0),
+  constraint stage_predictions_correct_count_check check (correct_count >= 0),
+  constraint stage_predictions_selected_not_empty check (cardinality(selected_teams) > 0)
+);
+
 create index if not exists matches_match_date_idx on public.matches(match_date);
 create index if not exists matches_status_idx on public.matches(status);
 create unique index if not exists matches_external_ref_unique_idx
@@ -149,6 +170,9 @@ create index if not exists predictions_match_id_idx on public.predictions(match_
 create index if not exists profiles_score_idx on public.profiles(total_points desc, correct_predictions desc);
 create index if not exists world_cup_winner_predictions_user_id_idx on public.world_cup_winner_predictions(user_id);
 create index if not exists world_cup_winner_predictions_team_idx on public.world_cup_winner_predictions(predicted_team);
+create index if not exists stage_predictions_user_id_idx on public.stage_predictions(user_id);
+create index if not exists stage_predictions_stage_idx on public.stage_predictions(stage);
+create index if not exists stage_predictions_scored_at_idx on public.stage_predictions(scored_at);
 
 create table if not exists public.sync_logs (
   id uuid primary key default gen_random_uuid(),
@@ -310,6 +334,11 @@ create trigger world_cup_winner_predictions_set_updated_at
 before update on public.world_cup_winner_predictions
 for each row execute function public.set_updated_at();
 
+drop trigger if exists stage_predictions_set_updated_at on public.stage_predictions;
+create trigger stage_predictions_set_updated_at
+before update on public.stage_predictions
+for each row execute function public.set_updated_at();
+
 create or replace function public.protect_profile_trusted_fields()
 returns trigger
 language plpgsql
@@ -327,6 +356,7 @@ begin
   new.match_winner_points := old.match_winner_points;
   new.exact_score_points := old.exact_score_points;
   new.champion_points := old.champion_points;
+  new.bracket_points := old.bracket_points;
   new.correct_predictions := old.correct_predictions;
   new.total_predictions := old.total_predictions;
   new.is_admin := old.is_admin;
@@ -368,6 +398,146 @@ as $$
   );
 $$;
 
+create or replace function public.team_compare_key(team_name text)
+returns text
+language sql
+immutable
+as $$
+  select regexp_replace(
+    trim(regexp_replace(regexp_replace(lower(coalesce(team_name, '')), '&', ' and ', 'g'), '[^a-z0-9]+', ' ', 'g')),
+    '\s+',
+    ' ',
+    'g'
+  );
+$$;
+
+create or replace function public.is_placeholder_team_name(team_name text)
+returns boolean
+language sql
+immutable
+as $$
+  select
+    trim(coalesce(team_name, '')) = ''
+    or lower(trim(coalesce(team_name, ''))) in ('tbd', 'to be determined')
+    or lower(trim(coalesce(team_name, ''))) ~ '^(?:[123][a-l](?:/[a-l])*|[a-l][123]?|w[0-9]+|l[0-9]+|group [a-l] (?:1st|2nd|3rd) place|round of [0-9]+ [0-9]+ winner|round of [0-9]+ [0-9]+ loser|quarterfinal [0-9]+ winner|quarterfinal [0-9]+ loser|semifinal [0-9]+ winner|semifinal [0-9]+ loser)$';
+$$;
+
+create or replace function public.normalize_stage_prediction_stage(stage_name text)
+returns text
+language plpgsql
+immutable
+as $$
+declare
+  stage_key text;
+begin
+  stage_key := trim(regexp_replace(lower(coalesce(stage_name, '')), '[^a-z0-9]+', ' ', 'g'));
+
+  if stage_key in ('round of 32', 'round 32', 'round_of_32') then
+    return 'round_of_32';
+  elsif stage_key in ('round of 16', 'round 16', 'round_of_16') then
+    return 'round_of_16';
+  elsif stage_key like '%quarter%' then
+    return 'quarter_finals';
+  elsif stage_key like '%semi%' then
+    return 'semi_finals';
+  elsif stage_key in ('final', 'finals', 'finalists') then
+    return 'finalists';
+  end if;
+
+  return null;
+end;
+$$;
+
+create or replace function public.normalize_match_prediction_stage(stage_name text)
+returns text
+language plpgsql
+immutable
+as $$
+declare
+  stage_key text;
+begin
+  stage_key := trim(regexp_replace(lower(coalesce(stage_name, '')), '[^a-z0-9]+', ' ', 'g'));
+
+  if stage_key like '%third%' then
+    return null;
+  elsif stage_key like '%round%32%' then
+    return 'round_of_32';
+  elsif stage_key like '%round%16%' then
+    return 'round_of_16';
+  elsif stage_key like '%quarter%' then
+    return 'quarter_finals';
+  elsif stage_key like '%semi%' then
+    return 'semi_finals';
+  elsif stage_key in ('final', 'finals') then
+    return 'finalists';
+  end if;
+
+  return null;
+end;
+$$;
+
+create or replace function public.stage_prediction_required_count(stage_name text)
+returns integer
+language sql
+immutable
+as $$
+  select case public.normalize_stage_prediction_stage(stage_name)
+    when 'round_of_32' then 32
+    when 'round_of_16' then 16
+    when 'quarter_finals' then 8
+    when 'semi_finals' then 4
+    when 'finalists' then 2
+    else null
+  end;
+$$;
+
+create or replace function public.stage_prediction_point_value(stage_name text)
+returns integer
+language sql
+immutable
+as $$
+  select case public.normalize_stage_prediction_stage(stage_name)
+    when 'round_of_32' then 1
+    when 'round_of_16' then 2
+    when 'quarter_finals' then 3
+    when 'semi_finals' then 4
+    when 'finalists' then 5
+    else null
+  end;
+$$;
+
+create or replace function public.stage_prediction_lock_at(stage_name text)
+returns timestamptz
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select min(match_date)
+  from public.matches
+  where public.normalize_match_prediction_stage(stage) = public.normalize_stage_prediction_stage(stage_name);
+$$;
+
+create or replace function public.is_valid_stage_prediction_team(team_name text)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select not public.is_placeholder_team_name(team_name)
+    and exists (
+      select 1
+      from (
+        select team_a as team from public.matches
+        union
+        select team_b as team from public.matches
+      ) teams
+      where not public.is_placeholder_team_name(teams.team)
+        and public.team_compare_key(teams.team) = public.team_compare_key(team_name)
+    );
+$$;
+
 create or replace function public.protect_prediction_scoring_fields()
 returns trigger
 language plpgsql
@@ -401,6 +571,38 @@ drop trigger if exists predictions_protect_scoring_fields on public.predictions;
 create trigger predictions_protect_scoring_fields
 before insert or update on public.predictions
 for each row execute function public.protect_prediction_scoring_fields();
+
+create or replace function public.protect_stage_prediction_scoring_fields()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if coalesce(auth.role(), '') = 'service_role' or public.is_admin(auth.uid()) then
+    return new;
+  end if;
+
+  if tg_op = 'INSERT' then
+    new.correct_teams := '{}';
+    new.points_awarded := 0;
+    new.correct_count := 0;
+    new.scored_at := null;
+    return new;
+  end if;
+
+  new.correct_teams := old.correct_teams;
+  new.points_awarded := old.points_awarded;
+  new.correct_count := old.correct_count;
+  new.scored_at := old.scored_at;
+  return new;
+end;
+$$;
+
+drop trigger if exists stage_predictions_protect_scoring_fields on public.stage_predictions;
+create trigger stage_predictions_protect_scoring_fields
+before insert or update on public.stage_predictions
+for each row execute function public.protect_stage_prediction_scoring_fields();
 
 create or replace function public.prevent_locked_prediction_change()
 returns trigger
@@ -452,10 +654,11 @@ as $$
 begin
   update public.profiles
   set
-    total_points = coalesce(summary.match_winner_points, 0) + coalesce(summary.exact_score_points, 0) + coalesce(champion.summary_points, 0),
+    total_points = coalesce(summary.match_winner_points, 0) + coalesce(summary.exact_score_points, 0) + coalesce(champion.summary_points, 0) + coalesce(bracket.summary_points, 0),
     match_winner_points = coalesce(summary.match_winner_points, 0),
     exact_score_points = coalesce(summary.exact_score_points, 0),
     champion_points = coalesce(champion.summary_points, 0),
+    bracket_points = coalesce(bracket.summary_points, 0),
     correct_predictions = coalesce(summary.correct_predictions, 0),
     total_predictions = coalesce(summary.total_predictions, 0)
   from (
@@ -472,7 +675,12 @@ begin
     select coalesce(sum(points_awarded), 0)::integer as summary_points
     from public.world_cup_winner_predictions
     where user_id = target_user_id
-  ) champion
+  ) champion,
+  (
+    select coalesce(sum(points_awarded), 0)::integer as summary_points
+    from public.stage_predictions
+    where user_id = target_user_id
+  ) bracket
   where profiles.id = summary.user_id;
 end;
 $$;
@@ -535,6 +743,7 @@ begin
   group by user_id;
 
   perform public.recalculate_champion_points();
+  perform public.recalculate_stage_prediction_points(null);
 end;
 $$;
 
@@ -625,6 +834,194 @@ begin
   returning * into saved_prediction;
 
   return saved_prediction;
+end;
+$$;
+
+create or replace function public.save_stage_prediction(target_stage text, selected_teams text[])
+returns public.stage_predictions
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  normalized_stage text;
+  required_count integer;
+  stage_lock_at timestamptz;
+  cleaned_teams text[];
+  saved_prediction public.stage_predictions;
+begin
+  if auth.uid() is null then
+    raise exception 'You must be logged in to save bracket predictions';
+  end if;
+
+  normalized_stage := public.normalize_stage_prediction_stage(target_stage);
+  required_count := public.stage_prediction_required_count(normalized_stage);
+
+  if normalized_stage is null or required_count is null then
+    raise exception 'Choose a valid bracket stage';
+  end if;
+
+  select array_agg(trim(selected.team_name) order by trim(selected.team_name))
+  into cleaned_teams
+  from unnest(coalesce(selected_teams, '{}')) as selected(team_name)
+  where trim(selected.team_name) <> '';
+
+  cleaned_teams := coalesce(cleaned_teams, '{}');
+
+  if cardinality(cleaned_teams) <> required_count then
+    raise exception 'Select exactly % teams for this stage', required_count;
+  end if;
+
+  if (
+    select count(distinct public.team_compare_key(selected.team_name))
+    from unnest(cleaned_teams) as selected(team_name)
+  ) <> required_count then
+    raise exception 'Do not select the same team twice';
+  end if;
+
+  if exists (
+    select 1
+    from unnest(cleaned_teams) as selected(team_name)
+    where not public.is_valid_stage_prediction_team(selected.team_name)
+  ) then
+    raise exception 'Choose teams from the tournament team list';
+  end if;
+
+  stage_lock_at := public.stage_prediction_lock_at(normalized_stage);
+
+  if stage_lock_at is not null and stage_lock_at <= now() then
+    raise exception 'This stage is locked';
+  end if;
+
+  insert into public.stage_predictions (user_id, stage, selected_teams, locked_at)
+  values (auth.uid(), normalized_stage, cleaned_teams, stage_lock_at)
+  on conflict (user_id, stage) do update set
+    selected_teams = excluded.selected_teams,
+    locked_at = excluded.locked_at,
+    correct_teams = '{}',
+    points_awarded = 0,
+    correct_count = 0,
+    scored_at = null,
+    updated_at = now()
+  where public.stage_predictions.scored_at is null
+    and (public.stage_predictions.locked_at is null or public.stage_predictions.locked_at > now())
+  returning * into saved_prediction;
+
+  if saved_prediction.id is null then
+    raise exception 'This stage is locked';
+  end if;
+
+  return saved_prediction;
+end;
+$$;
+
+create or replace function public.recalculate_stage_prediction_points(target_stage text default null)
+returns integer
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  normalized_stage text;
+  stage_name text;
+  stage_lock_at timestamptz;
+  actual_team_count integer;
+  required_count integer;
+  point_value integer;
+  updated_count integer := 0;
+  total_updated integer := 0;
+begin
+  if coalesce(auth.role(), '') <> 'service_role' and not public.is_admin(auth.uid()) then
+    raise exception 'Only admins can recalculate bracket points';
+  end if;
+
+  normalized_stage := public.normalize_stage_prediction_stage(target_stage);
+
+  if target_stage is null then
+    foreach stage_name in array array['round_of_32', 'round_of_16', 'quarter_finals', 'semi_finals', 'finalists']
+    loop
+      total_updated := total_updated + public.recalculate_stage_prediction_points(stage_name);
+    end loop;
+    return total_updated;
+  end if;
+
+  if normalized_stage is null then
+    raise exception 'Choose a valid bracket stage';
+  end if;
+
+  required_count := public.stage_prediction_required_count(normalized_stage);
+  point_value := public.stage_prediction_point_value(normalized_stage);
+  stage_lock_at := public.stage_prediction_lock_at(normalized_stage);
+
+  if stage_lock_at is null or stage_lock_at > now() then
+    return 0;
+  end if;
+
+  select count(distinct public.team_compare_key(team_name))
+  into actual_team_count
+  from (
+    select team_a as team_name
+    from public.matches
+    where public.normalize_match_prediction_stage(stage) = normalized_stage
+    union all
+    select team_b as team_name
+    from public.matches
+    where public.normalize_match_prediction_stage(stage) = normalized_stage
+  ) teams
+  where not public.is_placeholder_team_name(team_name);
+
+  if actual_team_count < required_count then
+    return 0;
+  end if;
+
+  with actual_teams as (
+    select distinct public.team_compare_key(team_name) as team_key
+    from (
+      select team_a as team_name
+      from public.matches
+      where public.normalize_match_prediction_stage(stage) = normalized_stage
+      union all
+      select team_b as team_name
+      from public.matches
+      where public.normalize_match_prediction_stage(stage) = normalized_stage
+    ) teams
+    where not public.is_placeholder_team_name(team_name)
+  ),
+  scored as (
+    select
+      prediction.id,
+      prediction.user_id,
+      coalesce(array_agg(selected.selected_team) filter (where actual_teams.team_key is not null), '{}') as next_correct_teams,
+      count(actual_teams.team_key)::integer as next_correct_count
+    from public.stage_predictions prediction
+    cross join lateral unnest(prediction.selected_teams) as selected(selected_team)
+    left join actual_teams
+      on actual_teams.team_key = public.team_compare_key(selected.selected_team)
+    where prediction.stage = normalized_stage
+      and coalesce(prediction.locked_at, stage_lock_at) <= now()
+    group by prediction.id, prediction.user_id
+  ),
+  updated as (
+    update public.stage_predictions
+    set
+      locked_at = coalesce(stage_predictions.locked_at, stage_lock_at),
+      correct_teams = scored.next_correct_teams,
+      correct_count = scored.next_correct_count,
+      points_awarded = scored.next_correct_count * point_value,
+      scored_at = now(),
+      updated_at = now()
+    from scored
+    where stage_predictions.id = scored.id
+    returning stage_predictions.user_id
+  )
+  select count(*) into updated_count from updated;
+
+  perform public.recalculate_profile_totals(user_id)
+  from public.stage_predictions
+  where stage = normalized_stage
+  group by user_id;
+
+  return coalesce(updated_count, 0);
 end;
 $$;
 
@@ -1067,6 +1464,7 @@ select
   match_winner_points,
   exact_score_points,
   champion_points,
+  bracket_points,
   correct_predictions,
   total_predictions,
   created_at
@@ -1097,6 +1495,7 @@ alter table public.groups enable row level security;
 alter table public.group_members enable row level security;
 alter table public.group_invitations enable row level security;
 alter table public.world_cup_winner_predictions enable row level security;
+alter table public.stage_predictions enable row level security;
 
 drop policy if exists "Users can read their own profile" on public.profiles;
 create policy "Users can read their own profile"
@@ -1269,6 +1668,44 @@ on public.world_cup_winner_predictions for all
 using (public.is_admin())
 with check (public.is_admin());
 
+drop policy if exists "Users can read own stage predictions" on public.stage_predictions;
+create policy "Users can read own stage predictions"
+on public.stage_predictions for select
+using (user_id = auth.uid() or public.is_admin());
+
+drop policy if exists "Users can create own unlocked stage predictions" on public.stage_predictions;
+create policy "Users can create own unlocked stage predictions"
+on public.stage_predictions for insert
+with check (
+  user_id = auth.uid()
+  and points_awarded = 0
+  and correct_count = 0
+  and scored_at is null
+  and (locked_at is null or locked_at > now())
+);
+
+drop policy if exists "Users can update own unlocked stage predictions" on public.stage_predictions;
+create policy "Users can update own unlocked stage predictions"
+on public.stage_predictions for update
+using (
+  user_id = auth.uid()
+  and scored_at is null
+  and (locked_at is null or locked_at > now())
+)
+with check (
+  user_id = auth.uid()
+  and points_awarded = 0
+  and correct_count = 0
+  and scored_at is null
+  and (locked_at is null or locked_at > now())
+);
+
+drop policy if exists "Admins can manage stage predictions" on public.stage_predictions;
+create policy "Admins can manage stage predictions"
+on public.stage_predictions for all
+using (public.is_admin())
+with check (public.is_admin());
+
 grant select on public.leaderboard_profiles to anon, authenticated;
 grant select on public.latest_successful_sync to anon, authenticated;
 grant select, insert on public.sync_logs to authenticated;
@@ -1277,6 +1714,8 @@ revoke execute on function public.recalculate_profile_totals(uuid) from PUBLIC;
 revoke execute on function public.generate_group_invite_code() from PUBLIC;
 revoke execute on function public.set_world_cup_winner_prediction(text) from PUBLIC;
 revoke execute on function public.recalculate_champion_points() from PUBLIC;
+revoke execute on function public.save_stage_prediction(text, text[]) from PUBLIC;
+revoke execute on function public.recalculate_stage_prediction_points(text) from PUBLIC;
 revoke execute on function public.search_profiles_for_invite(uuid, text) from PUBLIC;
 revoke execute on function public.create_private_group(text, text) from PUBLIC;
 revoke execute on function public.join_group_by_invite_code(text) from PUBLIC;
@@ -1293,12 +1732,17 @@ revoke insert, update, delete on public.groups from authenticated;
 revoke insert, update, delete on public.group_members from authenticated;
 revoke insert, update, delete on public.group_invitations from authenticated;
 revoke insert, update, delete on public.world_cup_winner_predictions from authenticated;
+revoke insert, update, delete on public.stage_predictions from authenticated;
 grant select on public.groups to authenticated;
 grant select on public.group_members to authenticated;
 grant select on public.group_invitations to authenticated;
 grant select on public.world_cup_winner_predictions to authenticated;
+grant select on public.stage_predictions to authenticated;
 grant execute on function public.set_world_cup_winner_prediction(text) to authenticated;
 grant execute on function public.recalculate_champion_points() to service_role;
+grant execute on function public.save_stage_prediction(text, text[]) to authenticated;
+grant execute on function public.recalculate_stage_prediction_points(text) to authenticated;
+grant execute on function public.recalculate_stage_prediction_points(text) to service_role;
 grant execute on function public.search_profiles_for_invite(uuid, text) to authenticated;
 grant execute on function public.create_private_group(text, text) to authenticated;
 grant execute on function public.join_group_by_invite_code(text) to authenticated;

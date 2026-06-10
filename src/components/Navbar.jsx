@@ -14,7 +14,7 @@ const navItems = [
 export function Navbar() {
   const [open, setOpen] = useState(false);
   const { isAuthenticated, isAdmin, profile, signOut } = useAuth();
-  const visibleNavItems = isAuthenticated ? [...navItems, { to: '/groups', label: 'Groups' }] : navItems;
+  const visibleNavItems = isAuthenticated ? [...navItems, { to: '/bracket', label: 'Bracket' }, { to: '/groups', label: 'Groups' }] : navItems;
 
   const linkClass = ({ isActive }) =>
     clsx(

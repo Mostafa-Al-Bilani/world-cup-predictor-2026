@@ -6,6 +6,12 @@ import { canViewGroup, mergeOwnedGroupsWithMembershipRows, ownerMembershipForGro
 import { getTopThreeUsers, hasScoredLeaderboardEntries, sortLeaderboardUsers } from '../src/utils/leaderboard.js';
 import { calculateChampionPoints, calculatePredictionPoints } from '../src/utils/predictions.js';
 import {
+  calculateStagePredictionPoints,
+  getStageLockAt,
+  isStageLocked,
+  validateStageSelection,
+} from '../src/utils/stagePredictions.js';
+import {
   buildFixtureLookupMaps,
   buildMatchPayload,
   findExistingMatchForFixture,
@@ -173,11 +179,12 @@ test('merges owned groups even when owner membership is missing', () => {
 test('normalizes and sorts leaderboard rows safely', () => {
   const rows = sortLeaderboardUsers([
     { id: 'a', username: 'Zed', total_points: null, correct_predictions: null, total_predictions: null },
-    { id: 'b', username: 'Ada', total_points: 2, match_winner_points: 1, exact_score_points: 1, champion_points: 0, correct_predictions: 1, total_predictions: 1 },
+    { id: 'b', username: 'Ada', total_points: 5, match_winner_points: 1, exact_score_points: 1, champion_points: 0, bracket_points: 3, correct_predictions: 1, total_predictions: 1 },
     { id: 'c', username: 'Bea', total_points: 2, correct_predictions: 0, total_predictions: 0 },
   ]);
 
   assert.equal(rows[0].username, 'Ada');
+  assert.equal(rows[0].bracket_points, 3);
   assert.equal(rows[1].username, 'Bea');
   assert.equal(rows[2].total_points, 0);
   assert.equal(hasScoredLeaderboardEntries([]), false);
@@ -369,4 +376,60 @@ test('matches provider team-name aliases to seeded group fixtures and flags dupl
   assert.equal(fixtureEquivalentKey(seeded), fixtureEquivalentKey(duplicate));
   assert.equal(existing.id, seeded.id);
   assert.deepEqual(getDeletableDuplicateMatchIdsForFixture(fixture, maps, existing.id), [duplicate.id]);
+});
+
+test('validates bracket stage selections', () => {
+  const teams = ['Brazil', 'Argentina'];
+
+  assert.deepEqual(
+    validateStageSelection({ stage: 'finalists', selectedTeams: ['Brazil', 'Argentina'], availableTeams: teams }),
+    ['Brazil', 'Argentina'],
+  );
+  assert.throws(
+    () => validateStageSelection({ stage: 'finalists', selectedTeams: ['Brazil'], availableTeams: teams }),
+    /Select exactly 2/,
+  );
+  assert.throws(
+    () => validateStageSelection({ stage: 'finalists', selectedTeams: ['Brazil', 'Brazil'], availableTeams: teams }),
+    /same team/,
+  );
+  assert.throws(
+    () => validateStageSelection({ stage: 'finalists', selectedTeams: ['Brazil', 'TBD'], availableTeams: [...teams, 'TBD'] }),
+    /tournament team/,
+  );
+});
+
+test('scores bracket stage predictions without incrementing points', () => {
+  const scored = calculateStagePredictionPoints({
+    stage: 'semi_finals',
+    selectedTeams: ['Brazil', 'Argentina', 'France', 'Mexico'],
+    actualTeams: ['Brazil', 'France', 'Spain', 'Germany'],
+  });
+
+  assert.deepEqual(scored, {
+    correctCount: 2,
+    correctTeams: ['Brazil', 'France'],
+    pointsAwarded: 8,
+    scored: true,
+  });
+  assert.deepEqual(calculateStagePredictionPoints({ stage: 'semi_finals', selectedTeams: ['Brazil'], actualTeams: ['Brazil'] }), {
+    correctCount: 0,
+    correctTeams: [],
+    pointsAwarded: 0,
+    scored: false,
+  });
+});
+
+test('uses UTC kickoff timestamps for bracket stage locks', () => {
+  const lockAt = getStageLockAt(
+    [
+      { stage: 'Round of 16', match_date: '2026-07-04T19:00:00.000Z' },
+      { stage: 'Round of 16', match_date: '2026-07-04T23:00:00.000Z' },
+    ],
+    'round_of_16',
+  );
+
+  assert.equal(lockAt, '2026-07-04T19:00:00.000Z');
+  assert.equal(isStageLocked(lockAt, new Date('2026-07-04T18:59:59.000Z').getTime()), false);
+  assert.equal(isStageLocked(lockAt, new Date('2026-07-04T19:00:00.000Z').getTime()), true);
 });
