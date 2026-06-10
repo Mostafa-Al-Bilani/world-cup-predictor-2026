@@ -25,16 +25,14 @@ const previousStageByStage = {
   finalists: "semi_finals",
 };
 
-const stageStatus = ({ dependencyReady, locked, prediction }) => {
+const stageStatus = ({ locked, prediction }) => {
   if (prediction?.scored_at) return "scored";
-  if (!dependencyReady) return "unavailable";
   if (locked) return "locked";
   if (prediction) return "saved";
   return "incomplete";
 };
 
 const statusStyles = {
-  unavailable: "border-slate-300/30 bg-slate-300/10 text-slate-100",
   incomplete: "border-amber-300/40 bg-amber-300/10 text-amber-100",
   saved: "border-emerald-300/40 bg-emerald-300/10 text-emerald-100",
   locked: "border-slate-300/30 bg-slate-300/10 text-slate-100",
@@ -210,9 +208,7 @@ export function BracketPredictionsPage() {
         [saved.stage]: saved.selected_teams ?? [],
       }));
 
-      toast.success(
-        `${getStageConfig(stage)?.label} prediction saved.`,
-      );
+      toast.success(`${getStageConfig(stage)?.label} prediction saved.`);
     } catch (error) {
       toast.error(
         getSafeErrorMessage(error, "Could not save this bracket prediction."),
@@ -225,6 +221,11 @@ export function BracketPredictionsPage() {
   if (loading) {
     return <LoadingSpinner label="Loading bracket predictions" />;
   }
+
+  const visibleStages = STAGE_PREDICTION_CONFIGS.filter((stage) => {
+    const { dependencyReady } = getStageDependency(stage.key);
+    return dependencyReady;
+  });
 
   return (
     <main className="mx-auto max-w-7xl px-4 py-12 sm:px-6 lg:px-8">
@@ -258,9 +259,11 @@ export function BracketPredictionsPage() {
         <p className="font-black text-emerald-100">
           Bracket predictions are round-by-round.
         </p>
+
         <p className="mt-1 text-sm text-slate-200">
-          Start with the Round of 32. Later rounds open only after the previous
-          round&apos;s actual qualified teams are known from synced fixtures.
+          Start with the Round of 32. Later rounds appear only after the
+          previous round&apos;s actual qualified teams are known from synced
+          fixtures.
         </p>
       </section>
 
@@ -273,30 +276,20 @@ export function BracketPredictionsPage() {
         </div>
       ) : (
         <div className="mt-8 space-y-6">
-          {STAGE_PREDICTION_CONFIGS.map((stage) => {
+          {visibleStages.map((stage) => {
             const prediction = predictionByStage.get(stage.key);
             const selected = drafts[stage.key] ?? [];
             const lockAt = getStageLockAt(matches, stage.key);
             const locked = isStageLocked(lockAt);
             const actualTeams = getActualTeamsForStage(matches, stage.key);
-
-            const {
-              previousStageKey,
-              previousStageConfig,
-              previousStageActualTeams,
-              dependencyReady,
-            } = getStageDependency(stage.key);
-
             const selectableTeams = getSelectableTeamsForStage(stage.key);
+
             const status = stageStatus({
-              dependencyReady,
               locked,
               prediction,
             });
 
-            const canEdit =
-              dependencyReady && !locked && !prediction?.scored_at;
-
+            const canEdit = !locked && !prediction?.scored_at;
             const isComplete = selected.length === stage.requiredCount;
 
             return (
@@ -361,47 +354,33 @@ export function BracketPredictionsPage() {
                 </div>
 
                 <div className="p-5">
-                  {!dependencyReady ? (
-                    <div className="rounded-lg border border-amber-300/30 bg-amber-300/10 p-4 text-sm text-amber-100">
-                      <p className="font-black">
-                        This round is not open yet.
-                      </p>
-                      <p className="mt-1 text-slate-200">
-                        It opens after the {previousStageConfig.label} teams are
-                        known. Current known teams:{" "}
-                        {previousStageActualTeams.length}/
-                        {previousStageConfig.requiredCount}.
-                      </p>
-                    </div>
-                  ) : (
-                    <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-                      {selectableTeams.map((team) => {
-                        const active = selected.includes(team);
-                        const disabled =
-                          !canEdit ||
-                          (!active && selected.length >= stage.requiredCount);
+                  <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                    {selectableTeams.map((team) => {
+                      const active = selected.includes(team);
+                      const disabled =
+                        !canEdit ||
+                        (!active && selected.length >= stage.requiredCount);
 
-                        return (
-                          <button
-                            key={team}
-                            type="button"
-                            disabled={disabled}
-                            onClick={() => toggleTeam(stage.key, team)}
-                            className={`flex min-w-0 items-center gap-3 rounded-lg border px-3 py-3 text-left transition ${
-                              active
-                                ? "border-emerald-300 bg-emerald-300/15 text-white"
-                                : "border-white/10 bg-white/[0.03] text-slate-200 hover:border-emerald-300/50 hover:bg-white/[0.06]"
-                            } disabled:cursor-not-allowed disabled:opacity-55`}
-                          >
-                            <TeamFlag size="md" teamName={team} />
-                            <span className="truncate text-sm font-black">
-                              {team}
-                            </span>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  )}
+                      return (
+                        <button
+                          key={team}
+                          type="button"
+                          disabled={disabled}
+                          onClick={() => toggleTeam(stage.key, team)}
+                          className={`flex min-w-0 items-center gap-3 rounded-lg border px-3 py-3 text-left transition ${
+                            active
+                              ? "border-emerald-300 bg-emerald-300/15 text-white"
+                              : "border-white/10 bg-white/[0.03] text-slate-200 hover:border-emerald-300/50 hover:bg-white/[0.06]"
+                          } disabled:cursor-not-allowed disabled:opacity-55`}
+                        >
+                          <TeamFlag size="md" teamName={team} />
+                          <span className="truncate text-sm font-black">
+                            {team}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
 
                   {prediction?.scored_at ? (
                     <div className="mt-5 rounded-lg border border-gold-300/30 bg-gold-300/10 p-4 text-sm text-gold-100">
@@ -425,9 +404,7 @@ export function BracketPredictionsPage() {
                         ? isComplete
                           ? "Ready to save."
                           : `Select exactly ${stage.requiredCount} teams before saving.`
-                        : !dependencyReady
-                          ? `This stage opens after ${previousStageConfig.label} teams are known.`
-                          : "This stage is read-only because it is locked or scored."}
+                        : "This stage is read-only because it is locked or scored."}
                     </p>
 
                     <button
@@ -443,6 +420,7 @@ export function BracketPredictionsPage() {
                       ) : (
                         <Save size={16} />
                       )}
+
                       {savingStage === stage.key ? "Saving..." : "Save stage"}
                     </button>
                   </div>
