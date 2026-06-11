@@ -1,4 +1,4 @@
-import { CalendarDays, MapPin, Trophy } from "lucide-react";
+import { CalendarDays, Clock, Lock, MapPin, Trophy } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { PredictionButton } from "./PredictionButton";
@@ -20,6 +20,70 @@ import {
   matchAllowsDraw,
 } from "../utils/predictions";
 
+function getPredictionLockMessage({ match, normalizedStatus }) {
+  if (normalizedStatus === "finished") {
+    return "Prediction closed — this match is finished.";
+  }
+
+  if (
+    normalizedStatus === "live" ||
+    normalizedStatus === "halftime" ||
+    normalizedStatus === "extra_time" ||
+    normalizedStatus === "penalties" ||
+    normalizedStatus === "penalty_shootout"
+  ) {
+    return "Prediction closed — this match has already started.";
+  }
+
+  if (normalizedStatus !== "upcoming") {
+    return "Prediction closed — this match is not open for predictions.";
+  }
+
+  if (isMatchLocked(match)) {
+    return "Prediction closed — kickoff time has passed.";
+  }
+
+  return "";
+}
+
+function getPredictionHelperMessage({
+  isAuthenticated,
+  locked,
+  lockMessage,
+  draft,
+  hasCompleteScore,
+}) {
+  if (!isAuthenticated) {
+    return "Log in to save your prediction before kickoff.";
+  }
+
+  if (locked) {
+    return lockMessage;
+  }
+
+  if (!draft.result && !hasCompleteScore) {
+    return "Choose a winner/result and enter both scores before saving.";
+  }
+
+  if (!draft.result) {
+    return "Choose a winner/result before saving.";
+  }
+
+  if (!hasCompleteScore) {
+    return "Enter both predicted scores before saving.";
+  }
+
+  return "Ready to save.";
+}
+
+function getSaveButtonLabel({ busy, locked, draft, hasCompleteScore, prediction }) {
+  if (busy) return "Saving...";
+  if (locked) return prediction ? "Prediction locked" : "Closed";
+  if (!draft.result) return "Choose result";
+  if (!hasCompleteScore) return "Enter score";
+  return prediction ? "Update prediction" : "Save prediction";
+}
+
 export function MatchCard({
   match,
   prediction,
@@ -29,6 +93,7 @@ export function MatchCard({
 }) {
   const normalizedStatus = normalizeMatchDisplayStatus(match.status);
   const locked = isMatchLocked(match) || normalizedStatus !== "upcoming";
+  const lockMessage = getPredictionLockMessage({ match, normalizedStatus });
   const canDraw = matchAllowsDraw(match);
   const predictionStatus = getPredictionStatus(match, prediction);
   const livePhaseLabel = getLivePhaseLabel(match);
@@ -58,6 +123,22 @@ export function MatchCard({
     draft.awayScore !== "" &&
     draft.awayScore !== null &&
     draft.awayScore !== undefined;
+
+  const helperMessage = getPredictionHelperMessage({
+    isAuthenticated,
+    locked,
+    lockMessage,
+    draft,
+    hasCompleteScore,
+  });
+
+  const saveButtonLabel = getSaveButtonLabel({
+    busy,
+    locked,
+    draft,
+    hasCompleteScore,
+    prediction,
+  });
 
   const savePrediction = (nextResult = draft.result) => {
     if (!nextResult) {
@@ -148,6 +229,18 @@ export function MatchCard({
             Score pick: {getPredictedScoreLabel(prediction)}
           </p>
 
+          {locked ? (
+            <div className="mt-4 flex items-start gap-2 rounded-lg border border-slate-300/20 bg-slate-300/10 p-3 text-sm text-slate-200">
+              <Lock size={16} className="mt-0.5 shrink-0 text-slate-300" />
+              <span>{lockMessage}</span>
+            </div>
+          ) : (
+            <div className="mt-4 flex items-start gap-2 rounded-lg border border-emerald-300/20 bg-emerald-300/10 p-3 text-sm text-emerald-100">
+              <Clock size={16} className="mt-0.5 shrink-0 text-emerald-300" />
+              <span>Open for predictions until kickoff.</span>
+            </div>
+          )}
+
           {isAuthenticated ? (
             <div className="mt-4 space-y-4">
               <div className="flex flex-wrap gap-2">
@@ -176,9 +269,16 @@ export function MatchCard({
               </div>
 
               <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_84px_84px] sm:items-end">
-                <p className="text-xs leading-5 text-slate-400">
-                  Score prediction is required. Enter both scores before saving
-                  your prediction.
+                <p
+                  className={`text-xs leading-5 ${
+                    locked
+                      ? "text-slate-400"
+                      : draft.result && hasCompleteScore
+                        ? "text-emerald-200"
+                        : "text-slate-400"
+                  }`}
+                >
+                  {helperMessage}
                 </p>
 
                 <ScoreInput
@@ -202,12 +302,12 @@ export function MatchCard({
                 onClick={() => savePrediction()}
                 className="w-full rounded-full border border-emerald-300/40 px-4 py-2 text-sm font-black text-emerald-100 transition hover:bg-emerald-300 hover:text-emerald-950 disabled:cursor-not-allowed disabled:opacity-60"
               >
-                {busy ? "Saving..." : "Save prediction"}
+                {saveButtonLabel}
               </button>
             </div>
           ) : (
             <Link
-              className="mt-4 inline-flex text-sm font-bold text-emerald-300 hover:text-white"
+              className="mt-4 inline-flex w-full justify-center rounded-full bg-emerald-300 px-4 py-2 text-sm font-black text-emerald-950 transition hover:bg-white"
               to="/login"
             >
               Log in to predict
