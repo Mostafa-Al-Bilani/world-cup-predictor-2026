@@ -167,10 +167,26 @@ Deno.serve(async (req) => {
       const event = findEspnEventForMatch(match, events);
 
       if (!event) {
-        failedCount += 1;
-        console.warn(
-          `No ESPN event match found for ${match.team_a} vs ${match.team_b}`,
-        );
+        const normalizedStatus = normalizeStatus(match.status);
+        const matchDate = new Date(match.match_date);
+        const minutesUntilKickoff =
+          (matchDate.getTime() - now.getTime()) / 1000 / 60;
+
+        const shouldTreatMissingAsFailure =
+          isLiveStatus(normalizedStatus) || minutesUntilKickoff <= 30;
+
+        if (shouldTreatMissingAsFailure) {
+          failedCount += 1;
+          console.warn(
+            `No ESPN event match found for ${match.team_a} vs ${match.team_b}`,
+          );
+        } else {
+          unchangedCount += 1;
+          console.warn(
+            `Skipping ESPN sync for upcoming match not currently returned by ESPN: ${match.team_a} vs ${match.team_b}`,
+          );
+        }
+
         continue;
       }
 

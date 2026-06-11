@@ -66,6 +66,7 @@ export function MatchesPage() {
   const [loading, setLoading] = useState(true);
   const [busyMatchId, setBusyMatchId] = useState(null);
   const [focusedMatchId, setFocusedMatchId] = useState(null);
+  const [hasScrolledToTarget, setHasScrolledToTarget] = useState(false);
 
   const [filters, setFilters] = useState({
     search: "",
@@ -174,6 +175,10 @@ export function MatchesPage() {
   );
 
   useEffect(() => {
+    setHasScrolledToTarget(false);
+  }, [targetMatchId]);
+
+  useEffect(() => {
     if (!targetMatchId || !matches.length) return;
 
     const targetMatch = matches.find((match) => match.id === targetMatchId);
@@ -191,7 +196,7 @@ export function MatchesPage() {
   }, [targetMatchId, matches]);
 
   useEffect(() => {
-    if (loading || !targetMatchId) return;
+    if (loading || !targetMatchId || hasScrolledToTarget) return;
 
     const timeoutId = window.setTimeout(() => {
       const element = document.getElementById(`match-${targetMatchId}`);
@@ -201,19 +206,17 @@ export function MatchesPage() {
           behavior: "smooth",
           block: "center",
         });
+
+        setHasScrolledToTarget(true);
+
+        window.setTimeout(() => {
+          setFocusedMatchId(null);
+        }, 2500);
       }
-
-      window.setTimeout(() => {
-        setFocusedMatchId(null);
-
-        navigate("/matches", {
-          replace: true,
-        });
-      }, 2200);
     }, 350);
 
     return () => window.clearTimeout(timeoutId);
-  }, [loading, targetMatchId, groupedMatches, navigate]);
+  }, [loading, targetMatchId, groupedMatches, hasScrolledToTarget]);
 
   const updateFilter = (event) => {
     setFilters((value) => ({
