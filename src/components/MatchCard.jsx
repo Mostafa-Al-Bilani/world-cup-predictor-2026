@@ -454,8 +454,8 @@ function ScoreInput({ label, value, disabled, onChange }) {
         value={value}
         disabled={disabled}
         onChange={(event) => onChange(event.target.value)}
-        className="mt-1 w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-center text-sm font-black text-white outline-none focus:border-emerald-300 disabled:cursor-not-allowed disabled:opacity-60"
-        placeholder="0"
+        className="mt-1 w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-center text-sm font-black text-white outline-none placeholder:text-slate-500 focus:border-emerald-300 disabled:cursor-not-allowed disabled:opacity-60"
+        placeholder="-"
       />
     </label>
   );

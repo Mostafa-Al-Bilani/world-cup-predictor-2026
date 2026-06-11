@@ -5,6 +5,7 @@ import { EmptyState } from "../components/EmptyState";
 import { LoadingSpinner } from "../components/LoadingSpinner";
 import { StatusBadge } from "../components/StatusBadge";
 import { useAuth } from "../context/AuthContext";
+import { championService } from "../services/championService";
 import { matchService } from "../services/matchService";
 import { predictionService } from "../services/predictionService";
 import { formatDateTime, isMatchLocked } from "../utils/date";
@@ -30,7 +31,13 @@ const resultFilters = [
   { value: "pending", label: "Pending" },
 ];
 
-const liveStatuses = new Set(["live", "halftime", "extra_time", "penalties", "penalty_shootout"]);
+const liveStatuses = new Set([
+  "live",
+  "halftime",
+  "extra_time",
+  "penalties",
+  "penalty_shootout",
+]);
 
 const normalizeStatus = (status) =>
   String(status ?? "")
@@ -74,9 +81,17 @@ function getEmptyDescription(activeView, resultFilter) {
 }
 
 export function MyPredictionsPage() {
-  const { championPrediction, user } = useAuth();
+  const {
+    championPrediction: contextChampionPrediction,
+    refreshChampionPrediction,
+    user,
+  } = useAuth();
+
   const [matches, setMatches] = useState([]);
   const [predictions, setPredictions] = useState([]);
+  const [championPick, setChampionPick] = useState(
+    contextChampionPrediction ?? null,
+  );
   const [activeView, setActiveView] = useState("upcoming");
   const [resultFilter, setResultFilter] = useState("all");
   const [loading, setLoading] = useState(true);
@@ -86,24 +101,32 @@ export function MyPredictionsPage() {
       setLoading(true);
 
       try {
-        const [matchRows, predictionRows] = await Promise.all([
+        const [matchRows, predictionRows, championRow] = await Promise.all([
           matchService.getMatches(),
           predictionService.getPredictionsForUser(user.id),
+          championService.getMyPrediction(user.id),
         ]);
 
         setMatches(matchRows);
         setPredictions(predictionRows);
+        setChampionPick(championRow ?? contextChampionPrediction ?? null);
+
+        if (championRow && !contextChampionPrediction) {
+          refreshChampionPrediction?.();
+        }
       } catch (error) {
         toast.error(
           getSafeErrorMessage(error, "Could not load your predictions."),
         );
+
+        setChampionPick(contextChampionPrediction ?? null);
       } finally {
         setLoading(false);
       }
     }
 
     load();
-  }, [user.id]);
+  }, [contextChampionPrediction, refreshChampionPrediction, user.id]);
 
   const allRows = useMemo(() => {
     const matchById = new Map(matches.map((match) => [match.id, match]));
@@ -114,7 +137,9 @@ export function MyPredictionsPage() {
         match: matchById.get(prediction.match_id),
       }))
       .filter(({ match }) => Boolean(match))
-      .sort((a, b) => new Date(a.match.match_date) - new Date(b.match.match_date));
+      .sort(
+        (a, b) => new Date(a.match.match_date) - new Date(b.match.match_date),
+      );
   }, [matches, predictions]);
 
   const rows = useMemo(() => {
@@ -211,7 +236,7 @@ export function MyPredictionsPage() {
         <SummaryCard label="Total predictions" value={summary.total} />
       </section>
 
-      {championPrediction ? (
+      {championPick ? (
         <section className="mt-8 rounded-lg border border-gold-300/30 bg-gold-300/10 p-5">
           <p className="text-xs font-black uppercase tracking-[0.22em] text-gold-300">
             World Cup winner pick
@@ -220,7 +245,7 @@ export function MyPredictionsPage() {
           <div className="mt-2 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
             <div>
               <h2 className="text-2xl font-black text-white">
-                {championPrediction.predicted_team}
+                {championPick.predicted_team}
               </h2>
 
               <p className="mt-1 text-sm text-slate-300">
@@ -231,7 +256,7 @@ export function MyPredictionsPage() {
             <p className="text-sm font-bold text-slate-200">
               Champion result:{" "}
               <span className="text-gold-300">
-                {getChampionResultLabel(championPrediction)}
+                {getChampionResultLabel(championPick)}
               </span>
             </p>
           </div>
@@ -391,7 +416,8 @@ export function MyPredictionsPage() {
                     </td>
 
                     <td className="px-5 py-4 text-slate-300">
-                      {!isMatchLocked(match) && normalizeStatus(match.status) === "upcoming"
+                      {!isMatchLocked(match) &&
+                      normalizeStatus(match.status) === "upcoming"
                         ? "Yes"
                         : "Locked"}
                     </td>
