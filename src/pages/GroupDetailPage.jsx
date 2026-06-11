@@ -133,17 +133,27 @@ export function GroupDetailPage() {
 
   const inviteProfile = async (profile) => {
     setInvitingId(profile.id);
+
     try {
-      await groupService.inviteMember({
+      const invitation = await groupService.inviteMember({
         groupId,
         userId: profile.id,
         invitedBy: user.id,
       });
+
       toast.success(`Invitation sent to ${profile.username}.`);
+
       setSearchResults((current) =>
         current.filter((item) => item.id !== profile.id),
       );
-      await load();
+
+      setInvitations((current) => [
+        {
+          ...invitation,
+          invited_profile: profile,
+        },
+        ...current.filter((item) => item.invited_user_id !== profile.id),
+      ]);
     } catch (error) {
       toast.error(getSafeErrorMessage(error, "Could not send invitation."));
     } finally {
@@ -494,7 +504,7 @@ export function GroupDetailPage() {
                           onClick={() => inviteProfile(profile)}
                           className="rounded-full border border-emerald-300/40 px-3 py-2 text-xs font-black text-emerald-100 transition hover:bg-emerald-300 hover:text-emerald-950 disabled:opacity-60"
                         >
-                          Invite
+                          {invitingId === profile.id ? "Sending..." : "Invite"}
                         </button>
                       </div>
                     ))}
