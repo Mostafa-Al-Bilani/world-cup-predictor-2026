@@ -16,6 +16,7 @@ import { groupService } from "../services/groupService";
 import { matchService } from "../services/matchService";
 import { predictionService } from "../services/predictionService";
 import { profileService } from "../services/profileService";
+import { supabase } from "../services/supabaseClient";
 import { formatDateTime, getTimeRemaining } from "../utils/date";
 import { getAccuracy, getPredictionTotalPoints } from "../utils/predictions";
 
@@ -70,32 +71,56 @@ function hasRealTeams(match) {
   );
 }
 
+async function getChampionPick(userId) {
+  if (!userId) return null;
+
+  const { data, error } = await supabase
+    .from("world_cup_winner_predictions")
+    .select("id,user_id,predicted_team,points_awarded,locked_at,created_at,updated_at")
+    .eq("user_id", userId)
+    .maybeSingle();
+
+  if (error) {
+    throw error;
+  }
+
+  return data;
+}
+
 export function HomePage() {
-  const { user, profile, championPrediction, isAuthenticated } = useAuth();
+  const { user, profile, isAuthenticated } = useAuth();
 
   const [matches, setMatches] = useState([]);
   const [predictions, setPredictions] = useState([]);
   const [leaders, setLeaders] = useState([]);
+  const [championPrediction, setChampionPrediction] = useState(null);
   const [pendingInvitations, setPendingInvitations] = useState([]);
   const [tick, setTick] = useState(Date.now());
 
   useEffect(() => {
     async function load() {
-      const [matchRows, leaderRows, predictionRows, invitationRows] =
-        await Promise.all([
-          matchService.getMatches(),
-          profileService.getLeaderboard(),
-          user?.id
-            ? predictionService.getPredictionsForUser(user.id)
-            : Promise.resolve([]),
-          user?.id
-            ? groupService.getPendingInvitations(user.id).catch(() => [])
-            : Promise.resolve([]),
-        ]);
+      const [
+        matchRows,
+        leaderRows,
+        predictionRows,
+        championPredictionRow,
+        invitationRows,
+      ] = await Promise.all([
+        matchService.getMatches(),
+        profileService.getLeaderboard(),
+        user?.id
+          ? predictionService.getPredictionsForUser(user.id)
+          : Promise.resolve([]),
+        user?.id ? getChampionPick(user.id).catch(() => null) : Promise.resolve(null),
+        user?.id
+          ? groupService.getPendingInvitations(user.id).catch(() => [])
+          : Promise.resolve([]),
+      ]);
 
       setMatches(matchRows);
       setLeaders(leaderRows);
       setPredictions(predictionRows);
+      setChampionPrediction(championPredictionRow);
       setPendingInvitations(invitationRows);
     }
 
@@ -374,7 +399,7 @@ function DashboardHome({
               </p>
               <p className="mt-2 text-sm text-slate-400">
                 {championPrediction
-                  ? "Locked for the tournament. Worth 3 points if correct."
+                  ? "Champion prediction submitted. Worth 3 points if correct."
                   : "Choose your champion. This pick is worth 3 points."}
               </p>
             </div>
