@@ -256,7 +256,6 @@ export function MatchCard({
         {shouldShowScoreBox(match) ? (
           <div className="mt-5 rounded-lg border border-white/10 bg-white/5 px-4 py-3 text-center text-2xl font-black">
             {match.team_a_score ?? "-"} : {match.team_b_score ?? "-"}
-
             {livePhaseLabel ? (
               <span
                 className={`ml-2 align-middle text-xs font-bold ${getLivePhaseClassName(
@@ -461,6 +460,7 @@ function TeamName({ name, align = "left" }) {
         className={align === "right" ? "mb-3 ml-auto" : "mb-3"}
         size="xl"
         teamName={name}
+        variant="premium"
       />
 
       <h3 className="break-words text-lg font-black text-white sm:text-xl">
