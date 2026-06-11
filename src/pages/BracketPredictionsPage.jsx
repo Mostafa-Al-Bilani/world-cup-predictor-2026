@@ -6,6 +6,7 @@ import { LoadingSpinner } from "../components/LoadingSpinner";
 import { TeamFlag } from "../components/TeamFlag";
 import { useAuth } from "../context/AuthContext";
 import { matchService } from "../services/matchService";
+import { championService } from "../services/championService";
 import { stagePredictionService } from "../services/stagePredictionService";
 import { formatDateTime } from "../utils/date";
 import { getSafeErrorMessage } from "../utils/errors";
@@ -136,10 +137,17 @@ const getRoundOf32GroupCounts = ({ selectedTeams, teamGroupMap }) => {
 };
 
 export function BracketPredictionsPage() {
-  const { championPrediction, user } = useAuth();
+  const {
+    championPrediction: contextChampionPrediction,
+    refreshChampionPrediction,
+    user,
+  } = useAuth();
   const [availableTeams, setAvailableTeams] = useState([]);
   const [matches, setMatches] = useState([]);
   const [predictions, setPredictions] = useState([]);
+  const [championPick, setChampionPick] = useState(
+    contextChampionPrediction ?? null,
+  );
   const [drafts, setDrafts] = useState({});
   const [savingStage, setSavingStage] = useState("");
   const [loading, setLoading] = useState(true);
@@ -148,11 +156,14 @@ export function BracketPredictionsPage() {
     setLoading(true);
 
     try {
-      const [teams, matchRows, predictionRows] = await Promise.all([
-        stagePredictionService.getAvailableTeams(),
-        matchService.getMatches(),
-        stagePredictionService.getMyPredictions(user.id),
-      ]);
+      const [teams, matchRows, predictionRows, championRow] = await Promise.all(
+        [
+          stagePredictionService.getAvailableTeams(),
+          matchService.getMatches(),
+          stagePredictionService.getMyPredictions(user.id),
+          championService.getMyPrediction(user.id),
+        ],
+      );
 
       const nextDrafts = Object.fromEntries(
         STAGE_PREDICTION_CONFIGS.map((stage) => [
@@ -166,6 +177,11 @@ export function BracketPredictionsPage() {
       setMatches(matchRows);
       setPredictions(predictionRows);
       setDrafts(nextDrafts);
+      setChampionPick(championRow ?? contextChampionPrediction ?? null);
+
+      if (championRow && !contextChampionPrediction) {
+        refreshChampionPrediction?.();
+      }
     } catch (error) {
       toast.error(
         getSafeErrorMessage(error, "Could not load bracket predictions."),
@@ -173,7 +189,7 @@ export function BracketPredictionsPage() {
     } finally {
       setLoading(false);
     }
-  }, [user.id]);
+  }, [contextChampionPrediction, refreshChampionPrediction, user.id]);
 
   useEffect(() => {
     load();
@@ -183,9 +199,7 @@ export function BracketPredictionsPage() {
 
   const predictionByStage = useMemo(
     () =>
-      new Map(
-        predictions.map((prediction) => [prediction.stage, prediction]),
-      ),
+      new Map(predictions.map((prediction) => [prediction.stage, prediction])),
     [predictions],
   );
 
@@ -217,8 +231,7 @@ export function BracketPredictionsPage() {
         previousStageConfig,
         previousStageActualTeams,
         dependencyReady:
-          previousStageActualTeams.length ===
-          previousStageConfig.requiredCount,
+          previousStageActualTeams.length === previousStageConfig.requiredCount,
       };
     },
     [getStageConfig, matches],
@@ -383,10 +396,21 @@ export function BracketPredictionsPage() {
 
         <div className="rounded-lg border border-gold-300/30 bg-gold-300/10 p-4 text-sm text-gold-100 lg:max-w-sm">
           <p className="font-black">Champion remains separate</p>
-          <p className="mt-1 text-slate-200">
-            Your champion pick is still worth 3 points:{" "}
-            {championPrediction?.predicted_team ?? "not selected yet"}.
-          </p>
+
+          {championPick ? (
+            <p className="mt-1 text-slate-200">
+              Your locked champion pick is{" "}
+              <span className="font-black text-gold-300">
+                {championPick.predicted_team}
+              </span>
+              . It is worth 3 points if correct.
+            </p>
+          ) : (
+            <p className="mt-1 text-slate-200">
+              You have not selected a champion yet. Champion prediction is worth
+              3 points.
+            </p>
+          )}
         </div>
       </div>
 

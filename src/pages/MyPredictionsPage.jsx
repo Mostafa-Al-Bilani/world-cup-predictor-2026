@@ -238,27 +238,28 @@ export function MyPredictionsPage() {
 
       {championPick ? (
         <section className="mt-8 rounded-lg border border-gold-300/30 bg-gold-300/10 p-5">
-          <p className="text-xs font-black uppercase tracking-[0.22em] text-gold-300">
-            World Cup winner pick
-          </p>
-
-          <div className="mt-2 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+          <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
             <div>
-              <h2 className="text-2xl font-black text-white">
+              <p className="text-xs font-black uppercase tracking-[0.22em] text-gold-300">
+                World Cup winner pick
+              </p>
+
+              <h2 className="mt-3 text-3xl font-black text-white">
                 {championPick.predicted_team}
               </h2>
 
-              <p className="mt-1 text-sm text-slate-300">
-                This pick is locked for the tournament.
+              <p className="mt-2 text-sm text-slate-300">
+                This pick is locked for the tournament and cannot be changed.
               </p>
             </div>
 
-            <p className="text-sm font-bold text-slate-200">
-              Champion result:{" "}
-              <span className="text-gold-300">
-                {getChampionResultLabel(championPick)}
-              </span>
-            </p>
+            <div className="grid gap-3 sm:grid-cols-2 lg:min-w-[360px]">
+              <ChampionMetric label="Potential points" value="3 pts" />
+              <ChampionMetric
+                label="Result"
+                value={getChampionResultLabel(championPick)}
+              />
+            </div>
           </div>
         </section>
       ) : (
@@ -268,9 +269,14 @@ export function MyPredictionsPage() {
           </p>
 
           <div className="mt-2 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <p className="text-sm text-slate-200">
-              You have not selected a champion yet.
-            </p>
+            <div>
+              <p className="text-sm text-slate-200">
+                You have not selected a champion yet.
+              </p>
+              <p className="mt-1 text-sm text-slate-400">
+                Champion prediction is worth 3 points.
+              </p>
+            </div>
 
             <Link
               to="/champion-pick"
@@ -408,7 +414,9 @@ export function MyPredictionsPage() {
                     </td>
 
                     <td className="px-5 py-4">
-                      <StatusBadge label={getPredictionStatus(match, prediction)} />
+                      <StatusBadge
+                        label={getPredictionStatus(match, prediction)}
+                      />
                     </td>
 
                     <td className="px-5 py-4 text-slate-300">
@@ -447,5 +455,16 @@ function SummaryCard({ label, value }) {
       </p>
       <p className="mt-3 text-3xl font-black text-white">{value}</p>
     </article>
+  );
+}
+
+function ChampionMetric({ label, value }) {
+  return (
+    <div className="rounded-lg border border-white/10 bg-slate-950/60 px-4 py-3">
+      <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-400">
+        {label}
+      </p>
+      <p className="mt-2 text-xl font-black text-gold-300">{value}</p>
+    </div>
   );
 }
