@@ -3,9 +3,9 @@ import { getTopThreeUsers } from "../utils/leaderboard";
 import { getAccuracy } from "../utils/predictions";
 
 const podiumStyles = [
-  "lg:order-2 lg:-translate-y-5 border-gold-300/50 bg-gold-300/15",
-  "lg:order-1 border-slate-300/40 bg-slate-300/10",
-  "lg:order-3 border-amber-700/50 bg-amber-700/15",
+  "xl:order-2 xl:-translate-y-5 border-gold-300/50 bg-gold-300/15",
+  "xl:order-1 border-slate-300/40 bg-slate-300/10",
+  "xl:order-3 border-amber-700/50 bg-amber-700/15",
 ];
 
 export function TopThreePodium({ users }) {
@@ -15,7 +15,7 @@ export function TopThreePodium({ users }) {
 
   return (
     <section
-      className="grid gap-4 lg:grid-cols-[repeat(auto-fit,minmax(190px,1fr))] lg:items-end"
+      className="grid gap-4 xl:grid-cols-3 xl:items-end"
       aria-label="Top three players"
     >
       {topThree.map((user, index) => (
@@ -45,7 +45,10 @@ export function TopThreePodium({ users }) {
             <Metric label="Total" value={user.total_points ?? 0} />
             <Metric
               label="Match"
-              value={(user.match_winner_points ?? 0) + (user.exact_score_points ?? 0)}
+              value={
+                (user.match_winner_points ?? 0) +
+                (user.exact_score_points ?? 0)
+              }
             />
             <Metric label="Champion" value={user.champion_points ?? 0} />
             <Metric label="Bracket" value={user.bracket_points ?? 0} />
