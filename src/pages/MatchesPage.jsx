@@ -172,6 +172,54 @@ export function MatchesPage() {
     [filteredMatches],
   );
 
+  useEffect(() => {
+    if (!targetMatchId || !matches.length) return;
+
+    const targetMatch = matches.find((match) => match.id === targetMatchId);
+    if (!targetMatch) return;
+
+    setFilters((current) => ({
+      ...current,
+      search: "",
+      stage: "all",
+      status: "all",
+      prediction: "all",
+    }));
+  }, [targetMatchId, matches]);
+
+  useEffect(() => {
+    if (loading || !targetMatchId) return;
+
+    const timeoutId = window.setTimeout(() => {
+      const element = document.getElementById(`match-${targetMatchId}`);
+
+      if (element) {
+        element.scrollIntoView({
+          behavior: "smooth",
+          block: "center",
+        });
+
+        element.classList.add(
+          "ring-2",
+          "ring-emerald-300",
+          "ring-offset-4",
+          "ring-offset-slate-950",
+        );
+
+        window.setTimeout(() => {
+          element.classList.remove(
+            "ring-2",
+            "ring-emerald-300",
+            "ring-offset-4",
+            "ring-offset-slate-950",
+          );
+        }, 2200);
+      }
+    }, 350);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [loading, targetMatchId, groupedMatches]);
+
   const updateFilter = (event) => {
     setFilters((value) => ({
       ...value,
@@ -229,57 +277,9 @@ export function MatchesPage() {
     }
   };
 
-  useEffect(() => {
-    if (!targetMatchId || !matches.length) return;
-
-    const targetMatch = matches.find((match) => match.id === targetMatchId);
-    if (!targetMatch) return;
-
-    setFilters((current) => ({
-      ...current,
-      search: "",
-      stage: "all",
-      status: "all",
-      prediction: "all",
-    }));
-  }, [targetMatchId, matches]);
-
   if (loading) {
     return <LoadingSpinner label="Loading match schedule" />;
   }
-
-  useEffect(() => {
-    if (loading || !targetMatchId) return;
-
-    const timeoutId = window.setTimeout(() => {
-      const element = document.getElementById(`match-${targetMatchId}`);
-
-      if (element) {
-        element.scrollIntoView({
-          behavior: "smooth",
-          block: "center",
-        });
-
-        element.classList.add(
-          "ring-2",
-          "ring-emerald-300",
-          "ring-offset-4",
-          "ring-offset-slate-950",
-        );
-
-        window.setTimeout(() => {
-          element.classList.remove(
-            "ring-2",
-            "ring-emerald-300",
-            "ring-offset-4",
-            "ring-offset-slate-950",
-          );
-        }, 2200);
-      }
-    }, 250);
-
-    return () => window.clearTimeout(timeoutId);
-  }, [loading, targetMatchId, groupedMatches]);
 
   return (
     <main className="mx-auto max-w-7xl px-4 py-12 sm:px-6 lg:px-8">
