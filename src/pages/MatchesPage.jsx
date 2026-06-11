@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import toast from "react-hot-toast";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { EmptyState } from "../components/EmptyState";
 import { FilterDropdown } from "../components/FilterDropdown";
 import { LoadingSpinner } from "../components/LoadingSpinner";
@@ -57,6 +57,8 @@ const groupMatchesByDate = (matches) => {
 
 export function MatchesPage() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const targetMatchId = searchParams.get("match");
   const { user, isAuthenticated } = useAuth();
 
   const [matches, setMatches] = useState([]);
@@ -204,9 +206,7 @@ export function MatchesPage() {
         saved,
       ]);
 
-      toast.success(
-        `Saved: ${match.team_a} vs ${match.team_b}`,
-      );
+      toast.success(`Saved: ${match.team_a} vs ${match.team_b}`);
     } catch (error) {
       const message = getSafeErrorMessage(error, "Could not save prediction.");
       const normalizedMessage = message.toLowerCase();
@@ -229,9 +229,57 @@ export function MatchesPage() {
     }
   };
 
+  useEffect(() => {
+    if (!targetMatchId || !matches.length) return;
+
+    const targetMatch = matches.find((match) => match.id === targetMatchId);
+    if (!targetMatch) return;
+
+    setFilters((current) => ({
+      ...current,
+      search: "",
+      stage: "all",
+      status: "all",
+      prediction: "all",
+    }));
+  }, [targetMatchId, matches]);
+
   if (loading) {
     return <LoadingSpinner label="Loading match schedule" />;
   }
+
+  useEffect(() => {
+    if (loading || !targetMatchId) return;
+
+    const timeoutId = window.setTimeout(() => {
+      const element = document.getElementById(`match-${targetMatchId}`);
+
+      if (element) {
+        element.scrollIntoView({
+          behavior: "smooth",
+          block: "center",
+        });
+
+        element.classList.add(
+          "ring-2",
+          "ring-emerald-300",
+          "ring-offset-4",
+          "ring-offset-slate-950",
+        );
+
+        window.setTimeout(() => {
+          element.classList.remove(
+            "ring-2",
+            "ring-emerald-300",
+            "ring-offset-4",
+            "ring-offset-slate-950",
+          );
+        }, 2200);
+      }
+    }, 250);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [loading, targetMatchId, groupedMatches]);
 
   return (
     <main className="mx-auto max-w-7xl px-4 py-12 sm:px-6 lg:px-8">
@@ -307,14 +355,19 @@ export function MatchesPage() {
 
                 <div className="grid gap-5 lg:grid-cols-2">
                   {group.matches.map((match) => (
-                    <MatchCard
+                    <div
                       key={match.id}
-                      match={match}
-                      prediction={predictionByMatch.get(match.id)}
-                      isAuthenticated={isAuthenticated}
-                      busy={busyMatchId === match.id}
-                      onPredict={handlePredict}
-                    />
+                      id={`match-${match.id}`}
+                      className="scroll-mt-28 rounded-lg transition"
+                    >
+                      <MatchCard
+                        match={match}
+                        prediction={predictionByMatch.get(match.id)}
+                        isAuthenticated={isAuthenticated}
+                        busy={busyMatchId === match.id}
+                        onPredict={handlePredict}
+                      />
+                    </div>
                   ))}
                 </div>
               </section>

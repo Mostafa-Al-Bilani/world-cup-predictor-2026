@@ -619,7 +619,7 @@ function NextPredictionCard({ match }) {
       </p>
 
       <Link
-        to="/matches"
+        to={`/matches?match=${match.id}`}
         className="mt-4 inline-flex rounded-full bg-emerald-300 px-4 py-2 text-sm font-black text-emerald-950 transition hover:bg-white"
       >
         Predict now
