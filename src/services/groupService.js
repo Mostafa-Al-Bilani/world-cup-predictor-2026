@@ -2,16 +2,16 @@ import {
   canViewGroup,
   mergeOwnedGroupsWithMembershipRows,
   ownerMembershipForGroup,
-} from "../utils/groups";
-import { sortLeaderboardUsers } from "../utils/leaderboard";
+} from "../utils/groups.js";
+import { sortLeaderboardUsers } from "../utils/leaderboard.js";
 import {
   normalizeGroupInput,
   normalizeInviteCode,
   normalizeProfileSearchQuery,
   validateUuid,
-} from "../utils/validation";
-import { isDemoMode, supabase } from "./supabaseClient";
-import { localStore } from "./localStore";
+} from "../utils/validation.js";
+import { isDemoMode, supabase } from "./supabaseClient.js";
+import { localStore } from "./localStore.js";
 
 const createInviteCode = () =>
   crypto.randomUUID().slice(0, 8).replace(/-/g, "").toUpperCase();
@@ -100,7 +100,9 @@ export const groupService = {
 
     const { data: ownedGroups, error: ownedError } = await supabase
       .from("groups")
-      .select("id,name,description,owner_id,invite_code,live_predictions_enabled,created_at,updated_at")
+      .select(
+        "id,name,description,owner_id,invite_code,live_predictions_enabled,created_at,updated_at",
+      )
       .eq("owner_id", currentUserId)
       .order("created_at", { ascending: false });
 
@@ -114,9 +116,11 @@ export const groupService = {
 
   async getPendingInvitations(userId) {
     if (!userId) return [];
+
     if (isDemoMode) {
       const normalizedUserId = validateUuid(userId, "User ID");
       const store = localStore.getStore();
+
       return store.groupInvitations
         .filter(
           (invite) =>
@@ -131,18 +135,33 @@ export const groupService = {
     }
 
     const currentUserId = await getCurrentUserId();
-    const { data, error } = await supabase
+
+    const { data: invites, error } = await supabase
       .from("group_invitations")
       .select(
-        "id,group_id,invited_user_id,invited_by,status,created_at,updated_at,groups(id,name,description,owner_id,invite_code)",
+        "id,group_id,invited_user_id,invited_by,status,created_at,updated_at",
       )
       .eq("invited_user_id", currentUserId)
       .eq("status", "pending")
       .order("created_at", { ascending: false });
 
     if (error) throw error;
-    return (data ?? [])
-      .map((invite) => ({ ...invite, group: invite.groups }))
+    if (!invites?.length) return [];
+
+    const groupIds = [...new Set(invites.map((invite) => invite.group_id))];
+
+    const { data: groups, error: groupError } = await supabase
+      .from("groups")
+      .select("id,name,description,owner_id,invite_code,created_at,updated_at")
+      .in("id", groupIds);
+
+    if (groupError) throw groupError;
+
+    return invites
+      .map((invite) => ({
+        ...invite,
+        group: groups?.find((group) => group.id === invite.group_id),
+      }))
       .filter((invite) => invite.group);
   },
 

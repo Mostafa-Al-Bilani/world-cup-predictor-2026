@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { TopThreePodium } from "../components/TopThreePodium";
 import { useAuth } from "../context/AuthContext";
+import { groupService } from "../services/groupService";
 import { matchService } from "../services/matchService";
 import { predictionService } from "../services/predictionService";
 import { profileService } from "../services/profileService";
@@ -46,7 +47,9 @@ const features = [
 ];
 
 function isPlaceholderTeamName(teamName) {
-  const text = String(teamName ?? "").trim().toLowerCase();
+  const text = String(teamName ?? "")
+    .trim()
+    .toLowerCase();
 
   return (
     !text ||
@@ -63,8 +66,7 @@ function isPlaceholderTeamName(teamName) {
 
 function hasRealTeams(match) {
   return (
-    !isPlaceholderTeamName(match.team_a) &&
-    !isPlaceholderTeamName(match.team_b)
+    !isPlaceholderTeamName(match.team_a) && !isPlaceholderTeamName(match.team_b)
   );
 }
 
@@ -74,19 +76,27 @@ export function HomePage() {
   const [matches, setMatches] = useState([]);
   const [predictions, setPredictions] = useState([]);
   const [leaders, setLeaders] = useState([]);
+  const [pendingInvitations, setPendingInvitations] = useState([]);
   const [tick, setTick] = useState(Date.now());
 
   useEffect(() => {
     async function load() {
-      const [matchRows, leaderRows, predictionRows] = await Promise.all([
-        matchService.getMatches(),
-        profileService.getLeaderboard(),
-        predictionService.getPredictionsForUser(user?.id),
-      ]);
+      const [matchRows, leaderRows, predictionRows, invitationRows] =
+        await Promise.all([
+          matchService.getMatches(),
+          profileService.getLeaderboard(),
+          user?.id
+            ? predictionService.getPredictionsForUser(user.id)
+            : Promise.resolve([]),
+          user?.id
+            ? groupService.getPendingInvitations(user.id).catch(() => [])
+            : Promise.resolve([]),
+        ]);
 
       setMatches(matchRows);
       setLeaders(leaderRows);
       setPredictions(predictionRows);
+      setPendingInvitations(invitationRows);
     }
 
     load().catch(() => undefined);
@@ -137,6 +147,7 @@ export function HomePage() {
         predictions={predictions}
         upcomingMatches={upcomingMatches}
         missingPredictions={missingPredictions}
+        pendingInvitations={pendingInvitations}
         nextMatch={nextMatch}
         nextPredictionNeeded={nextPredictionNeeded}
         remaining={remaining}
@@ -162,6 +173,7 @@ function DashboardHome({
   predictions,
   upcomingMatches,
   missingPredictions,
+  pendingInvitations,
   nextMatch,
   nextPredictionNeeded,
   remaining,
@@ -187,6 +199,9 @@ function DashboardHome({
     correct_predictions: profile?.correct_predictions ?? correctPredictions,
     total_predictions: profile?.total_predictions ?? predictions.length,
   });
+
+  const pendingInvitationCount = pendingInvitations.length;
+  const firstInvitation = pendingInvitations[0];
 
   return (
     <main className="mx-auto max-w-7xl px-4 py-10 sm:px-6 lg:px-8">
@@ -222,6 +237,36 @@ function DashboardHome({
           </Link>
         </div>
       </section>
+
+      {pendingInvitationCount ? (
+        <section className="mt-8 rounded-xl border border-emerald-300/30 bg-emerald-300/10 p-5 shadow-xl">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="text-xs font-black uppercase tracking-[0.22em] text-emerald-300">
+                Group invitation
+              </p>
+
+              <h2 className="mt-2 text-2xl font-black text-white">
+                You have {pendingInvitationCount} pending group invite
+                {pendingInvitationCount > 1 ? "s" : ""}
+              </h2>
+
+              <p className="mt-2 text-sm text-slate-300">
+                {firstInvitation?.group?.name
+                  ? `You were invited to join "${firstInvitation.group.name}".`
+                  : "Open your groups page to accept or decline your invite."}
+              </p>
+            </div>
+
+            <Link
+              to="/groups"
+              className="inline-flex w-full items-center justify-center gap-2 rounded-full bg-emerald-300 px-5 py-3 text-sm font-black text-emerald-950 transition hover:bg-white sm:w-auto"
+            >
+              View invite <ChevronRight size={18} />
+            </Link>
+          </div>
+        </section>
+      ) : null}
 
       <section className="mt-8 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <DashboardStatCard
@@ -527,9 +572,7 @@ function DashboardStatCard({ label, value, tone = "default" }) {
       <p className="text-xs font-black uppercase tracking-[0.22em] text-slate-400">
         {label}
       </p>
-      <p className="mt-3 text-2xl font-black text-white sm:text-3xl">
-        {value}
-      </p>
+      <p className="mt-3 text-2xl font-black text-white sm:text-3xl">{value}</p>
     </article>
   );
 }

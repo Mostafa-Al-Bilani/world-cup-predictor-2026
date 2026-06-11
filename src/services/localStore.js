@@ -1,4 +1,4 @@
-import { worldCupMatches } from '../data/matches';
+import { worldCupMatches } from "../data/matches.js";
 
 const STORE_KEY = 'wc26-predictor-demo-store';
 
