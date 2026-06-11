@@ -6,6 +6,7 @@ import { LoadingSpinner } from "../components/LoadingSpinner";
 import { ScoreboardTable } from "../components/ScoreboardTable";
 import { TopThreePodium } from "../components/TopThreePodium";
 import { useAuth } from "../context/AuthContext";
+import { groupService } from "../services/groupService";
 import { profileService } from "../services/profileService";
 import { syncLogService } from "../services/syncLogService";
 import { formatDateTime } from "../utils/date";
@@ -23,10 +24,22 @@ const scoreboardSortOptions = [
   { value: "accuracy", label: "Accuracy percentage" },
 ];
 
+const scoreboardScopeOptions = [
+  { value: "global", label: "Global scoreboard" },
+  { value: "group", label: "My group scoreboard" },
+];
+
 export function ScoreboardPage() {
-  const { user } = useAuth();
-  const [players, setPlayers] = useState([]);
+  const { user, isAuthenticated } = useAuth();
+
+  const [globalPlayers, setGlobalPlayers] = useState([]);
+  const [groupPlayers, setGroupPlayers] = useState([]);
+  const [groups, setGroups] = useState([]);
+  const [selectedGroupId, setSelectedGroupId] = useState("");
+  const [scope, setScope] = useState("global");
+
   const [loading, setLoading] = useState(true);
+  const [groupLoading, setGroupLoading] = useState(false);
   const [search, setSearch] = useState("");
   const [sortBy, setSortBy] = useState("total_points");
   const [latestSync, setLatestSync] = useState(null);
@@ -36,13 +49,21 @@ export function ScoreboardPage() {
       setLoading(true);
 
       try {
-        const [leaderboard, syncLog] = await Promise.all([
+        const [leaderboard, syncLog, myGroups] = await Promise.all([
           profileService.getLeaderboard(),
           syncLogService.getLatestSuccessfulSync().catch(() => null),
+          isAuthenticated
+            ? groupService.getMyGroups(user?.id).catch(() => [])
+            : Promise.resolve([]),
         ]);
 
-        setPlayers(leaderboard);
+        setGlobalPlayers(leaderboard);
         setLatestSync(syncLog);
+        setGroups(myGroups);
+
+        if (myGroups.length && !selectedGroupId) {
+          setSelectedGroupId(myGroups[0].id);
+        }
       } catch (error) {
         toast.error(getSafeErrorMessage(error, "Could not load scoreboard."));
       } finally {
@@ -51,12 +72,40 @@ export function ScoreboardPage() {
     }
 
     load();
-  }, []);
+  }, [isAuthenticated, selectedGroupId, user?.id]);
+
+  useEffect(() => {
+    async function loadGroupLeaderboard() {
+      if (!isAuthenticated || !selectedGroupId || scope !== "group") {
+        setGroupPlayers([]);
+        return;
+      }
+
+      setGroupLoading(true);
+
+      try {
+        const leaderboard =
+          await groupService.getGroupLeaderboard(selectedGroupId);
+
+        setGroupPlayers(leaderboard);
+      } catch (error) {
+        toast.error(
+          getSafeErrorMessage(error, "Could not load group scoreboard."),
+        );
+      } finally {
+        setGroupLoading(false);
+      }
+    }
+
+    loadGroupLeaderboard();
+  }, [isAuthenticated, scope, selectedGroupId]);
+
+  const activePlayers = scope === "group" ? groupPlayers : globalPlayers;
 
   const rankedPlayers = useMemo(() => {
     const query = search.trim().toLowerCase();
 
-    return sortLeaderboardUsers(players)
+    return sortLeaderboardUsers(activePlayers)
       .filter(
         (player) => !query || player.username.toLowerCase().includes(query),
       )
@@ -78,9 +127,21 @@ export function ScoreboardPage() {
 
         return a.username.localeCompare(b.username);
       });
-  }, [players, search, sortBy]);
+  }, [activePlayers, search, sortBy]);
 
+  const selectedGroup = groups.find((group) => group.id === selectedGroupId);
   const hasScoredRows = hasScoredLeaderboardEntries(rankedPlayers);
+  const currentUserRank = rankedPlayers.findIndex((player) => player.id === user?.id) + 1;
+
+  const handleScopeChange = (event) => {
+    setScope(event.target.value);
+    setSearch("");
+  };
+
+  const handleGroupChange = (event) => {
+    setSelectedGroupId(event.target.value);
+    setSearch("");
+  };
 
   if (loading) {
     return <LoadingSpinner label="Loading scoreboard" />;
@@ -91,16 +152,17 @@ export function ScoreboardPage() {
       <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
         <div>
           <p className="text-sm font-black uppercase tracking-[0.32em] text-emerald-300">
-            Public rankings
+            Rankings
           </p>
 
-          <h1 className="mt-3 text-4xl font-black sm:text-5xl">Scoreboard</h1>
+          <h1 className="mt-3 text-4xl font-black sm:text-5xl">
+            {scope === "group" ? "Group scoreboard" : "Global scoreboard"}
+          </h1>
 
           <p className="mt-3 max-w-2xl text-slate-300">
-            Correct match winner picks earn one point, exact scores add one
-            bonus point, and a correct World Cup champion pick adds three
-            tournament points. Bracket predictions add stage advancement points
-            after qualifiers are known.
+            Compare total points, match points, bracket points, champion points,
+            and accuracy. Switch between the public global ranking and your
+            private group ranking.
           </p>
 
           {latestSync ? (
@@ -112,12 +174,12 @@ export function ScoreboardPage() {
           ) : null}
         </div>
 
-        <div className="grid gap-3 sm:grid-cols-2 lg:w-[520px]">
-          <input
-            value={search}
-            onChange={(event) => setSearch(event.target.value)}
-            className="rounded-lg border border-white/10 bg-white/5 px-4 py-3 text-sm text-white outline-none placeholder:text-slate-500 focus:border-emerald-300"
-            placeholder="Search username"
+        <div className="grid gap-3 sm:grid-cols-2 lg:w-[720px] xl:grid-cols-4">
+          <FilterDropdown
+            name="scope"
+            value={scope}
+            options={scoreboardScopeOptions}
+            onChange={handleScopeChange}
           />
 
           <FilterDropdown
@@ -126,16 +188,86 @@ export function ScoreboardPage() {
             options={scoreboardSortOptions}
             onChange={(event) => setSortBy(event.target.value)}
           />
+
+          {scope === "group" ? (
+            <FilterDropdown
+              name="selectedGroupId"
+              value={selectedGroupId}
+              options={
+                groups.length
+                  ? groups.map((group) => ({
+                      value: group.id,
+                      label: group.name,
+                    }))
+                  : [{ value: "", label: "No groups yet" }]
+              }
+              onChange={handleGroupChange}
+            />
+          ) : null}
+
+          <input
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+            className="rounded-lg border border-white/10 bg-white/5 px-4 py-3 text-sm text-white outline-none placeholder:text-slate-500 focus:border-emerald-300"
+            placeholder="Search username"
+          />
         </div>
       </div>
 
-      {rankedPlayers.length ? (
+      <section className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <ScoreSummaryCard
+          label={scope === "group" ? "Group players" : "Global players"}
+          value={rankedPlayers.length}
+        />
+        <ScoreSummaryCard
+          label="Your rank"
+          value={currentUserRank > 0 ? `#${currentUserRank}` : "-"}
+        />
+        <ScoreSummaryCard
+          label="Top score"
+          value={rankedPlayers[0]?.total_points ?? 0}
+        />
+        <ScoreSummaryCard
+          label="View"
+          value={scope === "group" ? selectedGroup?.name ?? "Group" : "Global"}
+        />
+      </section>
+
+      {scope === "group" && !isAuthenticated ? (
+        <div className="mt-8">
+          <EmptyState
+            title="Log in to view group rankings"
+            description="Group scoreboards are private and only visible to group members."
+          />
+        </div>
+      ) : null}
+
+      {scope === "group" && isAuthenticated && !groups.length ? (
+        <div className="mt-8">
+          <EmptyState
+            title="You are not in any groups yet"
+            description="Create or join a group to compare your score with friends."
+          />
+        </div>
+      ) : null}
+
+      {groupLoading ? (
+        <div className="mt-8">
+          <LoadingSpinner label="Loading group scoreboard" />
+        </div>
+      ) : null}
+
+      {!groupLoading && rankedPlayers.length ? (
         <>
           {!hasScoredRows ? (
             <div className="mt-8">
               <EmptyState
                 title="No scores yet"
-                description="Scores will appear after matches are completed and predictions are scored. Registered players are listed below."
+                description={
+                  scope === "group"
+                    ? "This group has no scored predictions yet. Scores will appear after matches are completed."
+                    : "Scores will appear after matches are completed and predictions are scored. Registered players are listed below."
+                }
               />
             </div>
           ) : (
@@ -148,14 +280,29 @@ export function ScoreboardPage() {
             <ScoreboardTable users={rankedPlayers} currentUserId={user?.id} />
           </div>
         </>
-      ) : (
+      ) : null}
+
+      {!groupLoading &&
+      !rankedPlayers.length &&
+      !(scope === "group" && (!isAuthenticated || !groups.length)) ? (
         <div className="mt-8">
           <EmptyState
-            title="No scores yet"
-            description="Scores will appear after matches are completed and predictions are scored."
+            title="No rankings found"
+            description="Try clearing the search or switching scoreboard view."
           />
         </div>
-      )}
+      ) : null}
     </main>
+  );
+}
+
+function ScoreSummaryCard({ label, value }) {
+  return (
+    <article className="rounded-lg border border-white/10 bg-white/[0.04] p-5">
+      <p className="text-xs font-black uppercase tracking-[0.22em] text-slate-400">
+        {label}
+      </p>
+      <p className="mt-3 truncate text-3xl font-black text-white">{value}</p>
+    </article>
   );
 }
