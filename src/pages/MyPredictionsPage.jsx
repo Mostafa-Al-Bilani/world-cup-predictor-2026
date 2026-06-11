@@ -16,12 +16,27 @@ import {
   getPredictionTotalPoints,
 } from "../utils/predictions";
 
-const filters = [
-  { value: "all", label: "All predictions" },
+const viewTabs = [
+  { value: "upcoming", label: "Upcoming" },
+  { value: "live", label: "Live" },
+  { value: "finished", label: "Finished" },
+  { value: "all", label: "All" },
+];
+
+const resultFilters = [
+  { value: "all", label: "All results" },
   { value: "correct", label: "Correct" },
   { value: "wrong", label: "Wrong" },
   { value: "pending", label: "Pending" },
 ];
+
+const liveStatuses = new Set(["live", "halftime", "extra_time", "penalties", "penalty_shootout"]);
+
+const normalizeStatus = (status) =>
+  String(status ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/[\s-]+/g, "_");
 
 function getChampionResultLabel(championPrediction) {
   if (!championPrediction) return "Pending";
@@ -40,11 +55,30 @@ function getChampionResultLabel(championPrediction) {
   return "Pending";
 }
 
+function getEmptyDescription(activeView, resultFilter) {
+  if (activeView === "upcoming") {
+    return resultFilter === "all"
+      ? "You have no upcoming match predictions yet. Go to the matches page and add predictions before kickoff."
+      : "No upcoming predictions match this result filter.";
+  }
+
+  if (activeView === "live") {
+    return "You have no predictions for matches currently live.";
+  }
+
+  if (activeView === "finished") {
+    return "No finished match predictions match this filter yet.";
+  }
+
+  return "Visit the matches page and lock in your first call before kickoff.";
+}
+
 export function MyPredictionsPage() {
   const { championPrediction, user } = useAuth();
   const [matches, setMatches] = useState([]);
   const [predictions, setPredictions] = useState([]);
-  const [activeFilter, setActiveFilter] = useState("all");
+  const [activeView, setActiveView] = useState("upcoming");
+  const [resultFilter, setResultFilter] = useState("all");
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -71,7 +105,7 @@ export function MyPredictionsPage() {
     load();
   }, [user.id]);
 
-  const rows = useMemo(() => {
+  const allRows = useMemo(() => {
     const matchById = new Map(matches.map((match) => [match.id, match]));
 
     return predictions
@@ -80,13 +114,65 @@ export function MyPredictionsPage() {
         match: matchById.get(prediction.match_id),
       }))
       .filter(({ match }) => Boolean(match))
+      .sort((a, b) => new Date(a.match.match_date) - new Date(b.match.match_date));
+  }, [matches, predictions]);
+
+  const rows = useMemo(() => {
+    return allRows
+      .filter(({ match }) => {
+        const status = normalizeStatus(match.status);
+
+        if (activeView === "upcoming") return status === "upcoming";
+        if (activeView === "live") return liveStatuses.has(status);
+        if (activeView === "finished") return status === "finished";
+
+        return true;
+      })
       .filter(({ prediction }) => {
-        if (activeFilter === "correct") return prediction.is_correct === true;
-        if (activeFilter === "wrong") return prediction.is_correct === false;
-        if (activeFilter === "pending") return prediction.is_correct === null;
+        if (resultFilter === "correct") return prediction.is_correct === true;
+        if (resultFilter === "wrong") return prediction.is_correct === false;
+        if (resultFilter === "pending") return prediction.is_correct === null;
+
         return true;
       });
-  }, [activeFilter, matches, predictions]);
+  }, [activeView, allRows, resultFilter]);
+
+  const summary = useMemo(() => {
+    const upcoming = allRows.filter(
+      ({ match }) => normalizeStatus(match.status) === "upcoming",
+    ).length;
+
+    const live = allRows.filter(({ match }) =>
+      liveStatuses.has(normalizeStatus(match.status)),
+    ).length;
+
+    const finished = allRows.filter(
+      ({ match }) => normalizeStatus(match.status) === "finished",
+    ).length;
+
+    const totalPoints = predictions.reduce(
+      (sum, prediction) => sum + getPredictionTotalPoints(prediction),
+      0,
+    );
+
+    const correct = predictions.filter(
+      (prediction) => prediction.is_correct === true,
+    ).length;
+
+    const exact = predictions.filter(
+      (prediction) => Number(prediction.exact_score_points ?? 0) > 0,
+    ).length;
+
+    return {
+      upcoming,
+      live,
+      finished,
+      total: allRows.length,
+      totalPoints,
+      correct,
+      exact,
+    };
+  }, [allRows, predictions]);
 
   if (loading) {
     return <LoadingSpinner label="Loading your predictions" />;
@@ -103,25 +189,27 @@ export function MyPredictionsPage() {
           <h1 className="mt-3 text-4xl font-black sm:text-5xl">
             My Predictions
           </h1>
+
+          <p className="mt-3 max-w-2xl text-slate-300">
+            Review upcoming picks, live matches, finished results, champion
+            selection, and bracket progress from one place.
+          </p>
         </div>
 
-        <div className="flex flex-wrap gap-2">
-          {filters.map((filter) => (
-            <button
-              key={filter.value}
-              type="button"
-              onClick={() => setActiveFilter(filter.value)}
-              className={`rounded-full px-4 py-2 text-sm font-bold transition ${
-                activeFilter === filter.value
-                  ? "bg-emerald-300 text-emerald-950"
-                  : "bg-white/5 text-slate-200 hover:bg-white/10"
-              }`}
-            >
-              {filter.label}
-            </button>
-          ))}
-        </div>
+        <Link
+          to="/matches"
+          className="inline-flex justify-center rounded-full bg-emerald-300 px-5 py-3 text-sm font-black text-emerald-950 transition hover:bg-white"
+        >
+          Add predictions
+        </Link>
       </div>
+
+      <section className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <SummaryCard label="Total points" value={summary.totalPoints} />
+        <SummaryCard label="Correct picks" value={summary.correct} />
+        <SummaryCard label="Exact scores" value={summary.exact} />
+        <SummaryCard label="Total predictions" value={summary.total} />
+      </section>
 
       {championPrediction ? (
         <section className="mt-8 rounded-lg border border-gold-300/30 bg-gold-300/10 p-5">
@@ -130,9 +218,15 @@ export function MyPredictionsPage() {
           </p>
 
           <div className="mt-2 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
-            <h2 className="text-2xl font-black text-white">
-              {championPrediction.predicted_team}
-            </h2>
+            <div>
+              <h2 className="text-2xl font-black text-white">
+                {championPrediction.predicted_team}
+              </h2>
+
+              <p className="mt-1 text-sm text-slate-300">
+                This pick is locked for the tournament.
+              </p>
+            </div>
 
             <p className="text-sm font-bold text-slate-200">
               Champion result:{" "}
@@ -142,7 +236,26 @@ export function MyPredictionsPage() {
             </p>
           </div>
         </section>
-      ) : null}
+      ) : (
+        <section className="mt-8 rounded-lg border border-gold-300/30 bg-gold-300/10 p-5">
+          <p className="text-xs font-black uppercase tracking-[0.22em] text-gold-300">
+            World Cup winner pick
+          </p>
+
+          <div className="mt-2 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <p className="text-sm text-slate-200">
+              You have not selected a champion yet.
+            </p>
+
+            <Link
+              to="/champion-pick"
+              className="inline-flex justify-center rounded-full bg-gold-300 px-4 py-2 text-sm font-black text-slate-950 transition hover:bg-white"
+            >
+              Pick champion
+            </Link>
+          </div>
+        </section>
+      )}
 
       <section className="mt-6 rounded-lg border border-emerald-300/30 bg-emerald-300/10 p-5">
         <p className="text-xs font-black uppercase tracking-[0.22em] text-emerald-200">
@@ -152,7 +265,7 @@ export function MyPredictionsPage() {
         <div className="mt-2 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <p className="text-sm text-slate-200">
             Pick which teams advance before each knockout stage locks. These
-            picks are optional and scored separately.
+            picks are scored separately.
           </p>
 
           <Link
@@ -161,6 +274,56 @@ export function MyPredictionsPage() {
           >
             Open bracket
           </Link>
+        </div>
+      </section>
+
+      <section className="mt-8 rounded-lg border border-white/10 bg-slate-950/72 p-5">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+          <div className="flex flex-wrap gap-2">
+            {viewTabs.map((tab) => {
+              const count =
+                tab.value === "upcoming"
+                  ? summary.upcoming
+                  : tab.value === "live"
+                    ? summary.live
+                    : tab.value === "finished"
+                      ? summary.finished
+                      : summary.total;
+
+              return (
+                <button
+                  key={tab.value}
+                  type="button"
+                  onClick={() => setActiveView(tab.value)}
+                  className={`rounded-full px-4 py-2 text-sm font-bold transition ${
+                    activeView === tab.value
+                      ? "bg-emerald-300 text-emerald-950"
+                      : "bg-white/5 text-slate-200 hover:bg-white/10"
+                  }`}
+                >
+                  {tab.label}{" "}
+                  <span className="ml-1 opacity-80">({count})</span>
+                </button>
+              );
+            })}
+          </div>
+
+          <div className="flex flex-wrap gap-2">
+            {resultFilters.map((filter) => (
+              <button
+                key={filter.value}
+                type="button"
+                onClick={() => setResultFilter(filter.value)}
+                className={`rounded-full px-4 py-2 text-sm font-bold transition ${
+                  resultFilter === filter.value
+                    ? "bg-gold-300 text-slate-950"
+                    : "bg-white/5 text-slate-200 hover:bg-white/10"
+                }`}
+              >
+                {filter.label}
+              </button>
+            ))}
+          </div>
         </div>
       </section>
 
@@ -228,7 +391,7 @@ export function MyPredictionsPage() {
                     </td>
 
                     <td className="px-5 py-4 text-slate-300">
-                      {!isMatchLocked(match) && match.status === "upcoming"
+                      {!isMatchLocked(match) && normalizeStatus(match.status) === "upcoming"
                         ? "Yes"
                         : "Locked"}
                     </td>
@@ -241,11 +404,22 @@ export function MyPredictionsPage() {
       ) : (
         <div className="mt-8">
           <EmptyState
-            title="No predictions yet"
-            description="Visit the matches page and lock in your first call before kickoff."
+            title="No predictions found"
+            description={getEmptyDescription(activeView, resultFilter)}
           />
         </div>
       )}
     </main>
+  );
+}
+
+function SummaryCard({ label, value }) {
+  return (
+    <article className="rounded-lg border border-white/10 bg-white/[0.04] p-5">
+      <p className="text-xs font-black uppercase tracking-[0.22em] text-slate-400">
+        {label}
+      </p>
+      <p className="mt-3 text-3xl font-black text-white">{value}</p>
+    </article>
   );
 }
