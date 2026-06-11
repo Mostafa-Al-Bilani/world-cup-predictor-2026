@@ -181,8 +181,8 @@ function DashboardHome({
           </h1>
 
           <p className="mt-3 max-w-2xl text-slate-300">
-            You are signed in. Track your score, finish missing predictions, and
-            follow the next World Cup match from one place.
+            Track your score, complete missing predictions, and follow the next
+            World Cup match from one place.
           </p>
         </div>
 
