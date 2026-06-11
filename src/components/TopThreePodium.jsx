@@ -3,9 +3,9 @@ import { getTopThreeUsers } from "../utils/leaderboard";
 import { getAccuracy } from "../utils/predictions";
 
 const podiumStyles = [
-  "md:order-2 md:-translate-y-6 border-gold-300/50 bg-gold-300/15",
-  "md:order-1 border-slate-300/40 bg-slate-300/10",
-  "md:order-3 border-amber-700/50 bg-amber-700/15",
+  "lg:order-2 lg:-translate-y-5 border-gold-300/50 bg-gold-300/15",
+  "lg:order-1 border-slate-300/40 bg-slate-300/10",
+  "lg:order-3 border-amber-700/50 bg-amber-700/15",
 ];
 
 export function TopThreePodium({ users }) {
@@ -15,13 +15,13 @@ export function TopThreePodium({ users }) {
 
   return (
     <section
-      className="grid gap-4 md:grid-cols-3 md:items-end"
+      className="grid gap-4 lg:grid-cols-[repeat(auto-fit,minmax(190px,1fr))] lg:items-end"
       aria-label="Top three players"
     >
       {topThree.map((user, index) => (
         <article
           key={user.id}
-          className={`rounded-lg border p-5 text-center shadow-xl ${podiumStyles[index]}`}
+          className={`min-w-0 rounded-lg border p-5 text-center shadow-xl ${podiumStyles[index]}`}
         >
           <div className="mx-auto grid h-14 w-14 place-items-center rounded-lg bg-slate-950/80 text-gold-300">
             {index === 0 ? (
@@ -33,7 +33,7 @@ export function TopThreePodium({ users }) {
             )}
           </div>
 
-          <p className="mt-4 text-sm font-black uppercase tracking-[0.3em] text-slate-300">
+          <p className="mt-4 text-sm font-black uppercase tracking-[0.24em] text-slate-300">
             Rank #{index + 1}
           </p>
 
@@ -41,15 +41,19 @@ export function TopThreePodium({ users }) {
             {user.username}
           </h3>
 
-          <div className="mt-5 grid gap-2">
-            <Metric label="Total points" value={user.total_points ?? 0} />
+          <div className="mt-5 grid grid-cols-2 gap-2">
+            <Metric label="Total" value={user.total_points ?? 0} />
             <Metric
-              label="Match points"
+              label="Match"
               value={(user.match_winner_points ?? 0) + (user.exact_score_points ?? 0)}
             />
-            <Metric label="Champion points" value={user.champion_points ?? 0} />
-            <Metric label="Bracket points" value={user.bracket_points ?? 0} />
-            <Metric label="Accuracy" value={`${getAccuracy(user)}%`} />
+            <Metric label="Champion" value={user.champion_points ?? 0} />
+            <Metric label="Bracket" value={user.bracket_points ?? 0} />
+            <Metric
+              label="Accuracy"
+              value={`${getAccuracy(user)}%`}
+              className="col-span-2"
+            />
           </div>
         </article>
       ))}
@@ -57,13 +61,15 @@ export function TopThreePodium({ users }) {
   );
 }
 
-function Metric({ label, value }) {
+function Metric({ label, value, className = "" }) {
   return (
-    <div className="flex items-center justify-between gap-3 rounded-lg bg-black/25 px-4 py-3 text-left">
-      <p className="text-xs font-bold uppercase tracking-wide text-slate-400">
+    <div
+      className={`min-w-0 rounded-lg bg-black/25 px-3 py-3 text-center ${className}`}
+    >
+      <p className="truncate text-xl font-black text-white">{value}</p>
+      <p className="mt-1 truncate text-[10px] font-black uppercase tracking-wide text-slate-400">
         {label}
       </p>
-      <p className="shrink-0 text-lg font-black text-white">{value}</p>
     </div>
   );
 }
