@@ -17,17 +17,40 @@ export const shouldShowScoreBox = (match) => {
   return scoreVisibleStatuses.has(normalizeMatchDisplayStatus(match?.status));
 };
 
-export const getLivePhaseLabel = (match) => {
-  const status = normalizeMatchDisplayStatus(match?.status);
+const formatStatusDetail = (statusDetail) => {
+  const text = String(statusDetail ?? "").trim();
 
-  if (status === "extra_time") return "ET";
+  if (!text) return "";
 
-  if (status === "penalties" || status === "penalty_shootout") {
-    return "PEN";
+  if (/\d/.test(text) && text.includes("'")) {
+    return `${text} min`;
   }
 
-  if (status === "live" && match?.elapsed) {
-    return `${match.elapsed} min`;
+  return text;
+};
+
+export const getLivePhaseLabel = (match) => {
+  const status = normalizeMatchDisplayStatus(match?.status);
+  const statusDetail = formatStatusDetail(match?.status_detail);
+
+  if (status === "extra_time") {
+    return statusDetail || "ET";
+  }
+
+  if (status === "penalties" || status === "penalty_shootout") {
+    return statusDetail || "PEN";
+  }
+
+  if (status === "halftime") {
+    return statusDetail || "HT";
+  }
+
+  if (status === "live") {
+    if (statusDetail) return statusDetail;
+
+    if (match?.elapsed !== null && match?.elapsed !== undefined) {
+      return `${match.elapsed} min`;
+    }
   }
 
   return "";

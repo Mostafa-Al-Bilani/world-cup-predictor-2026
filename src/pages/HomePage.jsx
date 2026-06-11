@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import toast from "react-hot-toast";
+import { Link, useNavigate } from "react-router-dom";
 import {
   CalendarDays,
   ChevronRight,
@@ -10,6 +11,7 @@ import {
   Trophy,
   Users,
 } from "lucide-react";
+import { MatchCard } from "../components/MatchCard";
 import { TopThreePodium } from "../components/TopThreePodium";
 import { useAuth } from "../context/AuthContext";
 import { groupService } from "../services/groupService";
@@ -17,7 +19,8 @@ import { matchService } from "../services/matchService";
 import { predictionService } from "../services/predictionService";
 import { profileService } from "../services/profileService";
 import { supabase } from "../services/supabaseClient";
-import { formatDateTime, getTimeRemaining } from "../utils/date";
+import { formatDateTime, getTimeRemaining, isMatchLocked } from "../utils/date";
+import { getSafeErrorMessage } from "../utils/errors";
 import { getAccuracy, getPredictionTotalPoints } from "../utils/predictions";
 
 const features = [
@@ -71,12 +74,29 @@ function hasRealTeams(match) {
   );
 }
 
+const normalizeStatus = (status) =>
+  String(status ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/[\s-]+/g, "_");
+
+const isLiveMatchStatus = (status) =>
+  [
+    "live",
+    "halftime",
+    "extra_time",
+    "penalties",
+    "penalty_shootout",
+  ].includes(normalizeStatus(status));
+
 async function getChampionPick(userId) {
   if (!userId) return null;
 
   const { data, error } = await supabase
     .from("world_cup_winner_predictions")
-    .select("id,user_id,predicted_team,points_awarded,locked_at,created_at,updated_at")
+    .select(
+      "id,user_id,predicted_team,points_awarded,locked_at,created_at,updated_at",
+    )
     .eq("user_id", userId)
     .maybeSingle();
 
@@ -88,6 +108,7 @@ async function getChampionPick(userId) {
 }
 
 export function HomePage() {
+  const navigate = useNavigate();
   const { user, profile, isAuthenticated } = useAuth();
 
   const [matches, setMatches] = useState([]);
@@ -95,37 +116,46 @@ export function HomePage() {
   const [leaders, setLeaders] = useState([]);
   const [championPrediction, setChampionPrediction] = useState(null);
   const [pendingInvitations, setPendingInvitations] = useState([]);
+  const [busyMatchId, setBusyMatchId] = useState(null);
   const [tick, setTick] = useState(Date.now());
 
-  useEffect(() => {
-    async function load() {
-      const [
-        matchRows,
-        leaderRows,
-        predictionRows,
-        championPredictionRow,
-        invitationRows,
-      ] = await Promise.all([
-        matchService.getMatches(),
-        profileService.getLeaderboard(),
-        user?.id
-          ? predictionService.getPredictionsForUser(user.id)
-          : Promise.resolve([]),
-        user?.id ? getChampionPick(user.id).catch(() => null) : Promise.resolve(null),
-        user?.id
-          ? groupService.getPendingInvitations(user.id).catch(() => [])
-          : Promise.resolve([]),
-      ]);
+  const loadDashboard = useCallback(async () => {
+    const [
+      matchRows,
+      leaderRows,
+      predictionRows,
+      championPredictionRow,
+      invitationRows,
+    ] = await Promise.all([
+      matchService.getMatches(),
+      profileService.getLeaderboard(),
+      user?.id
+        ? predictionService.getPredictionsForUser(user.id)
+        : Promise.resolve([]),
+      user?.id
+        ? getChampionPick(user.id).catch(() => null)
+        : Promise.resolve(null),
+      user?.id
+        ? groupService.getPendingInvitations(user.id).catch(() => [])
+        : Promise.resolve([]),
+    ]);
 
-      setMatches(matchRows);
-      setLeaders(leaderRows);
-      setPredictions(predictionRows);
-      setChampionPrediction(championPredictionRow);
-      setPendingInvitations(invitationRows);
-    }
-
-    load().catch(() => undefined);
+    setMatches(matchRows);
+    setLeaders(leaderRows);
+    setPredictions(predictionRows);
+    setChampionPrediction(championPredictionRow);
+    setPendingInvitations(invitationRows);
   }, [user?.id]);
+
+  useEffect(() => {
+    loadDashboard().catch(() => undefined);
+
+    const intervalId = window.setInterval(() => {
+      loadDashboard().catch(() => undefined);
+    }, 60000);
+
+    return () => window.clearInterval(intervalId);
+  }, [loadDashboard]);
 
   useEffect(() => {
     const interval = window.setInterval(() => setTick(Date.now()), 1000);
@@ -138,11 +168,20 @@ export function HomePage() {
         .filter(hasRealTeams)
         .filter(
           (match) =>
-            match.status === "upcoming" &&
+            normalizeStatus(match.status) === "upcoming" &&
             new Date(match.match_date).getTime() > tick,
         )
         .sort((a, b) => new Date(a.match_date) - new Date(b.match_date)),
     [matches, tick],
+  );
+
+  const liveMatches = useMemo(
+    () =>
+      matches
+        .filter(hasRealTeams)
+        .filter((match) => isLiveMatchStatus(match.status))
+        .sort((a, b) => new Date(a.match_date) - new Date(b.match_date)),
+    [matches],
   );
 
   const predictionByMatch = useMemo(
@@ -163,6 +202,41 @@ export function HomePage() {
 
   const nextPredictionNeeded = missingPredictions[0];
 
+  const handlePredict = async (match, predictedResult, scoreDraft = {}) => {
+    if (!isAuthenticated) {
+      navigate("/login", { state: { from: "/matches" } });
+      return;
+    }
+
+    if (isMatchLocked(match) || normalizeStatus(match.status) !== "upcoming") {
+      toast.error("Predictions are locked for this match.");
+      return;
+    }
+
+    setBusyMatchId(match.id);
+
+    try {
+      const saved = await predictionService.upsertPrediction({
+        userId: user.id,
+        matchId: match.id,
+        predictedResult,
+        predictedHomeScore: scoreDraft.predictedHomeScore,
+        predictedAwayScore: scoreDraft.predictedAwayScore,
+      });
+
+      setPredictions((items) => [
+        ...items.filter((prediction) => prediction.match_id !== match.id),
+        saved,
+      ]);
+
+      toast.success(`Saved: ${match.team_a} vs ${match.team_b}`);
+    } catch (error) {
+      toast.error(getSafeErrorMessage(error, "Could not save prediction."));
+    } finally {
+      setBusyMatchId(null);
+    }
+  };
+
   if (isAuthenticated) {
     return (
       <DashboardHome
@@ -177,6 +251,10 @@ export function HomePage() {
         nextPredictionNeeded={nextPredictionNeeded}
         remaining={remaining}
         predictionByMatch={predictionByMatch}
+        liveMatches={liveMatches}
+        busyMatchId={busyMatchId}
+        isAuthenticated={isAuthenticated}
+        handlePredict={handlePredict}
       />
     );
   }
@@ -185,6 +263,7 @@ export function HomePage() {
     <PublicHome
       leaders={leaders}
       upcomingMatches={upcomingMatches}
+      liveMatches={liveMatches}
       nextMatch={nextMatch}
       remaining={remaining}
     />
@@ -203,6 +282,10 @@ function DashboardHome({
   nextPredictionNeeded,
   remaining,
   predictionByMatch,
+  liveMatches,
+  busyMatchId,
+  isAuthenticated,
+  handlePredict,
 }) {
   const totalPredictionPoints = predictions.reduce(
     (sum, prediction) => sum + getPredictionTotalPoints(prediction),
@@ -292,6 +375,14 @@ function DashboardHome({
           </div>
         </section>
       ) : null}
+
+      <LiveMatchFocusSection
+        liveMatches={liveMatches}
+        predictionByMatch={predictionByMatch}
+        isAuthenticated={isAuthenticated}
+        busyMatchId={busyMatchId}
+        onPredict={handlePredict}
+      />
 
       <section className="mt-8 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <DashboardStatCard
@@ -425,7 +516,7 @@ function DashboardHome({
   );
 }
 
-function PublicHome({ leaders, upcomingMatches, nextMatch, remaining }) {
+function PublicHome({ leaders, upcomingMatches, liveMatches, nextMatch, remaining }) {
   return (
     <main>
       <section className="relative overflow-hidden border-b border-white/10">
@@ -471,6 +562,14 @@ function PublicHome({ leaders, upcomingMatches, nextMatch, remaining }) {
       </section>
 
       <section className="mx-auto max-w-7xl px-4 py-12 sm:px-6 lg:px-8">
+        <LiveMatchFocusSection
+          liveMatches={liveMatches}
+          predictionByMatch={new Map()}
+          isAuthenticated={false}
+          busyMatchId={null}
+          onPredict={() => undefined}
+        />
+
         <div className="grid gap-4 md:grid-cols-4">
           {features.map((feature) => {
             const Icon = feature.icon;
@@ -561,6 +660,60 @@ function PublicHome({ leaders, upcomingMatches, nextMatch, remaining }) {
         </div>
       </section>
     </main>
+  );
+}
+
+function LiveMatchFocusSection({
+  liveMatches,
+  predictionByMatch,
+  isAuthenticated,
+  busyMatchId,
+  onPredict,
+}) {
+  if (!liveMatches.length) return null;
+
+  return (
+    <section className="mt-8 rounded-xl border border-emerald-300/30 bg-emerald-300/10 p-5 shadow-2xl">
+      <div className="mb-5 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <p className="text-xs font-black uppercase tracking-[0.24em] text-emerald-300">
+            Live now
+          </p>
+
+          <h2 className="mt-2 text-3xl font-black text-white">
+            Current live match
+          </h2>
+
+          <p className="mt-2 text-sm text-slate-300">
+            Follow the live score and match status here.
+          </p>
+        </div>
+
+        <Link
+          to="/matches"
+          className="inline-flex w-full items-center justify-center gap-2 rounded-full bg-emerald-300 px-5 py-3 text-sm font-black text-emerald-950 transition hover:bg-white sm:w-auto"
+        >
+          Open matches <ChevronRight size={18} />
+        </Link>
+      </div>
+
+      <div className="grid gap-5 lg:grid-cols-2">
+        {liveMatches.map((match) => (
+          <div
+            key={match.id}
+            className="rounded-lg ring-2 ring-emerald-300/60 ring-offset-4 ring-offset-slate-950"
+          >
+            <MatchCard
+              match={match}
+              prediction={predictionByMatch.get(match.id)}
+              isAuthenticated={isAuthenticated}
+              busy={busyMatchId === match.id}
+              onPredict={onPredict}
+            />
+          </div>
+        ))}
+      </div>
+    </section>
   );
 }
 

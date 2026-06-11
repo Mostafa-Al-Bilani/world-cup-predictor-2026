@@ -36,15 +36,6 @@ const normalizeStatus = (status) =>
     .toLowerCase()
     .replace(/[\s-]+/g, "_");
 
-const isLiveMatchStatus = (status) =>
-  [
-    "live",
-    "halftime",
-    "extra_time",
-    "penalties",
-    "penalty_shootout",
-  ].includes(normalizeStatus(status));
-
 const groupMatchesByDate = (matches) => {
   const grouped = new Map();
 
@@ -125,19 +116,6 @@ export function MatchesPage() {
         predictions.map((prediction) => [prediction.match_id, prediction]),
       ),
     [predictions],
-  );
-
-  const liveMatches = useMemo(
-    () =>
-      matches
-        .filter((match) => isLiveMatchStatus(match.status))
-        .sort((a, b) => new Date(a.match_date) - new Date(b.match_date)),
-    [matches],
-  );
-
-  const liveMatchIds = useMemo(
-    () => new Set(liveMatches.map((match) => match.id)),
-    [liveMatches],
   );
 
   const stageOptions = useMemo(
@@ -348,61 +326,10 @@ export function MatchesPage() {
         </div>
       </div>
 
-      {liveMatches.length ? (
-        <section className="mt-8 rounded-xl border border-emerald-300/30 bg-emerald-300/10 p-5 shadow-xl">
-          <div className="mb-5 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
-            <div>
-              <p className="text-xs font-black uppercase tracking-[0.24em] text-emerald-300">
-                Live now
-              </p>
-
-              <h2 className="mt-2 text-3xl font-black text-white">
-                Current live match
-              </h2>
-
-              <p className="mt-2 text-sm text-slate-300">
-                This match is in progress and appears here even when the filter
-                is set to upcoming.
-              </p>
-            </div>
-          </div>
-
-          <div className="grid gap-5 lg:grid-cols-2">
-            {liveMatches.map((match) => (
-              <div
-                key={match.id}
-                id={`match-${match.id}`}
-                className={`scroll-mt-28 rounded-lg transition ${
-                  focusedMatchId === match.id
-                    ? "ring-2 ring-emerald-300 ring-offset-4 ring-offset-slate-950"
-                    : "ring-2 ring-emerald-300/50 ring-offset-4 ring-offset-slate-950"
-                }`}
-              >
-                <MatchCard
-                  match={match}
-                  prediction={predictionByMatch.get(match.id)}
-                  isAuthenticated={isAuthenticated}
-                  busy={busyMatchId === match.id}
-                  onPredict={handlePredict}
-                />
-              </div>
-            ))}
-          </div>
-        </section>
-      ) : null}
-
       {groupedMatches.length ? (
         <div className="mt-8 space-y-10">
           {groupedMatches.map((group) => {
-            const visibleMatches = group.matches.filter(
-              (match) => !liveMatchIds.has(match.id),
-            );
-
-            if (!visibleMatches.length) {
-              return null;
-            }
-
-            const predictedCount = visibleMatches.filter((match) =>
+            const predictedCount = group.matches.filter((match) =>
               predictionByMatch.has(match.id),
             ).length;
 
@@ -414,15 +341,15 @@ export function MatchesPage() {
                       {group.dateLabel}
                     </h2>
                     <p className="mt-1 text-sm text-slate-400">
-                      {visibleMatches.length} matches · {predictedCount}{" "}
-                      predicted · {visibleMatches.length - predictedCount}{" "}
+                      {group.matches.length} matches · {predictedCount}{" "}
+                      predicted · {group.matches.length - predictedCount}{" "}
                       missing
                     </p>
                   </div>
                 </div>
 
                 <div className="grid gap-5 lg:grid-cols-2">
-                  {visibleMatches.map((match) => (
+                  {group.matches.map((match) => (
                     <div
                       key={match.id}
                       id={`match-${match.id}`}
@@ -446,7 +373,7 @@ export function MatchesPage() {
             );
           })}
         </div>
-      ) : liveMatches.length ? null : (
+      ) : (
         <div className="mt-8">
           <EmptyState
             title="No matches found"
