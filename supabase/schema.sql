@@ -1569,7 +1569,9 @@ begin
 end;
 $$;
 
-create or replace function public.get_live_group_predictions(target_group_id uuid)
+drop function if exists public.get_live_group_predictions(uuid);
+
+create function public.get_live_group_predictions(target_group_id uuid)
 returns table (
   match_id uuid,
   match_number integer,
@@ -1580,6 +1582,8 @@ returns table (
   match_status text,
   match_date timestamptz,
   stage text,
+  venue text,
+  city text,
   user_id uuid,
   username text,
   predicted_result text,
@@ -1588,45 +1592,91 @@ returns table (
 )
 language sql
 security definer
-set search_path = public
+set search_path = public, extensions
 as $$
+  with target_match as (
+    select
+      m.id,
+      m.match_number,
+      m.team_a,
+      m.team_b,
+      m.team_a_score,
+      m.team_b_score,
+      m.status,
+      m.match_date,
+      m.stage,
+      m.venue,
+      m.city
+    from public.matches m
+    where m.match_date is not null
+      and m.team_a is not null
+      and m.team_b is not null
+      and lower(coalesce(m.status, '')) not in (
+        'finished',
+        'completed',
+        'final',
+        'full_time',
+        'full time',
+        'ft',
+        'cancelled',
+        'postponed'
+      )
+      and not public.is_placeholder_team_name(m.team_a)
+      and not public.is_placeholder_team_name(m.team_b)
+    order by
+      case
+        when lower(coalesce(m.status, '')) in (
+          'live',
+          'in_progress',
+          'in progress',
+          'halftime',
+          'half_time',
+          'half time',
+          'ht',
+          'extra_time',
+          'extra time',
+          'penalties',
+          'penalty',
+          'penalty_shootout'
+        ) then 0
+        else 1
+      end,
+      m.match_date asc
+    limit 1
+  )
   select
-    m.id as match_id,
-    m.match_number,
-    m.team_a,
-    m.team_b,
-    m.team_a_score,
-    m.team_b_score,
-    m.status as match_status,
-    m.match_date,
-    m.stage,
-    p.user_id,
+    tm.id as match_id,
+    tm.match_number,
+    tm.team_a,
+    tm.team_b,
+    tm.team_a_score,
+    tm.team_b_score,
+    tm.status as match_status,
+    tm.match_date,
+    tm.stage,
+    tm.venue,
+    tm.city,
+    gm.user_id,
     coalesce(lp.username, 'Unknown player') as username,
-    p.predicted_result,
-    p.predicted_home_score,
-    p.predicted_away_score
-  from public.groups g
+    pr.predicted_result,
+    pr.predicted_home_score,
+    pr.predicted_away_score
+  from target_match tm
+  join public.groups g
+    on g.id = target_group_id
+   and g.live_predictions_enabled = true
   join public.group_members gm
-    on gm.group_id = g.id
+    on gm.group_id = target_group_id
    and gm.status = 'accepted'
-  join public.predictions p
-    on p.user_id = gm.user_id
-  join public.matches m
-    on m.id = p.match_id
+  left join public.predictions pr
+    on pr.match_id = tm.id
+   and pr.user_id = gm.user_id
   left join public.leaderboard_profiles lp
-    on lp.id = p.user_id
-  where g.id = target_group_id
-    and g.live_predictions_enabled = true
-    and m.match_date <= now()
-    and m.status in ('live', 'halftime')
-    and exists (
-      select 1
-      from public.group_members viewer_membership
-      where viewer_membership.group_id = target_group_id
-        and viewer_membership.user_id = auth.uid()
-        and viewer_membership.status = 'accepted'
-    )
-  order by m.match_date, lp.username;
+    on lp.id = gm.user_id
+  where public.is_group_member(target_group_id, auth.uid())
+  order by
+    lp.username asc nulls last,
+    gm.created_at asc;
 $$;
 
 create or replace function public.delete_private_group(target_group_id uuid)
@@ -2638,7 +2688,9 @@ begin
 end;
 $$;
 
-create or replace function public.get_live_group_predictions(target_group_id uuid)
+drop function if exists public.get_live_group_predictions(uuid);
+
+create function public.get_live_group_predictions(target_group_id uuid)
 returns table (
   match_id uuid,
   match_number integer,
@@ -2649,6 +2701,8 @@ returns table (
   match_status text,
   match_date timestamptz,
   stage text,
+  venue text,
+  city text,
   user_id uuid,
   username text,
   predicted_result text,
@@ -2659,43 +2713,89 @@ language sql
 security definer
 set search_path = public, extensions
 as $$
+  with target_match as (
+    select
+      m.id,
+      m.match_number,
+      m.team_a,
+      m.team_b,
+      m.team_a_score,
+      m.team_b_score,
+      m.status,
+      m.match_date,
+      m.stage,
+      m.venue,
+      m.city
+    from public.matches m
+    where m.match_date is not null
+      and m.team_a is not null
+      and m.team_b is not null
+      and lower(coalesce(m.status, '')) not in (
+        'finished',
+        'completed',
+        'final',
+        'full_time',
+        'full time',
+        'ft',
+        'cancelled',
+        'postponed'
+      )
+      and not public.is_placeholder_team_name(m.team_a)
+      and not public.is_placeholder_team_name(m.team_b)
+    order by
+      case
+        when lower(coalesce(m.status, '')) in (
+          'live',
+          'in_progress',
+          'in progress',
+          'halftime',
+          'half_time',
+          'half time',
+          'ht',
+          'extra_time',
+          'extra time',
+          'penalties',
+          'penalty',
+          'penalty_shootout'
+        ) then 0
+        else 1
+      end,
+      m.match_date asc
+    limit 1
+  )
   select
-    m.id as match_id,
-    m.match_number,
-    m.team_a,
-    m.team_b,
-    m.team_a_score,
-    m.team_b_score,
-    m.status as match_status,
-    m.match_date,
-    m.stage,
-    p.user_id,
+    tm.id as match_id,
+    tm.match_number,
+    tm.team_a,
+    tm.team_b,
+    tm.team_a_score,
+    tm.team_b_score,
+    tm.status as match_status,
+    tm.match_date,
+    tm.stage,
+    tm.venue,
+    tm.city,
+    gm.user_id,
     coalesce(lp.username, 'Unknown player') as username,
-    p.predicted_result,
-    p.predicted_home_score,
-    p.predicted_away_score
-  from public.groups g
+    pr.predicted_result,
+    pr.predicted_home_score,
+    pr.predicted_away_score
+  from target_match tm
+  join public.groups g
+    on g.id = target_group_id
+   and g.live_predictions_enabled = true
   join public.group_members gm
-    on gm.group_id = g.id
+    on gm.group_id = target_group_id
    and gm.status = 'accepted'
-  join public.predictions p
-    on p.user_id = gm.user_id
-  join public.matches m
-    on m.id = p.match_id
+  left join public.predictions pr
+    on pr.match_id = tm.id
+   and pr.user_id = gm.user_id
   left join public.leaderboard_profiles lp
-    on lp.id = p.user_id
-  where g.id = target_group_id
-    and g.live_predictions_enabled = true
-    and m.match_date <= now()
-    and m.status in ('live', 'halftime', 'extra_time', 'penalties', 'penalty_shootout')
-    and exists (
-      select 1
-      from public.group_members viewer_membership
-      where viewer_membership.group_id = target_group_id
-        and viewer_membership.user_id = auth.uid()
-        and viewer_membership.status = 'accepted'
-    )
-  order by m.match_date, lp.username;
+    on lp.id = gm.user_id
+  where public.is_group_member(target_group_id, auth.uid())
+  order by
+    lp.username asc nulls last,
+    gm.created_at asc;
 $$;
 
 select public.refresh_stage_prediction_windows();

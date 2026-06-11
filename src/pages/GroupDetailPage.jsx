@@ -1,15 +1,26 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import toast from "react-hot-toast";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { Copy, RefreshCw, Search, Trash2, UserMinus } from "lucide-react";
+import {
+  CalendarDays,
+  Copy,
+  MapPin,
+  RefreshCw,
+  Search,
+  Trash2,
+  Trophy,
+  UserMinus,
+} from "lucide-react";
 import { ConfirmationModal } from "../components/ConfirmationModal";
 import { EmptyState } from "../components/EmptyState";
 import { LoadingSpinner } from "../components/LoadingSpinner";
 import { ScoreboardTable } from "../components/ScoreboardTable";
+import { StatusBadge } from "../components/StatusBadge";
+import { TeamFlag } from "../components/TeamFlag";
 import { TopThreePodium } from "../components/TopThreePodium";
 import { useAuth } from "../context/AuthContext";
 import { groupService } from "../services/groupService";
-import { formatDate } from "../utils/date";
+import { formatDate, formatDateTime } from "../utils/date";
 import { getSafeErrorMessage } from "../utils/errors";
 
 export function GroupDetailPage() {
@@ -377,68 +388,17 @@ export function GroupDetailPage() {
                   return groups;
                 }, {}),
               ).map(({ match, predictions }) => (
-                <div
+                <GroupPredictionMatchCard
                   key={match.match_id}
-                  className="rounded-lg border border-white/10 bg-white/[0.04] p-4"
-                >
-                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                    <div>
-                      <p className="text-lg font-black text-white">
-                        {match.team_a} vs {match.team_b}
-                      </p>
-
-                      <p className="text-xs font-bold uppercase tracking-wide text-emerald-200">
-                        {match.match_status}
-                      </p>
-                    </div>
-
-                    <div className="text-2xl font-black text-white">
-                      {match.team_a_score ?? "-"} : {match.team_b_score ?? "-"}
-                    </div>
-                  </div>
-
-                  <div className="mt-4 overflow-hidden rounded-lg border border-white/10">
-                    {predictions.map((prediction) => (
-                      <div
-                        key={`${prediction.match_id}-${prediction.user_id}`}
-                        className="grid gap-2 border-b border-white/10 px-4 py-3 last:border-b-0 sm:grid-cols-[1fr_1fr_auto]"
-                      >
-                        <p className="font-bold text-white">
-                          {prediction.username ?? "Unknown player"}
-                        </p>
-
-                        {prediction.predicted_result ? (
-                          <>
-                            <p className="text-sm text-slate-300">
-                              Pick: {formatPredictionResult(prediction, match)}
-                            </p>
-
-                            <p className="text-sm font-black text-emerald-200">
-                              {prediction.predicted_home_score} -{" "}
-                              {prediction.predicted_away_score}
-                            </p>
-                          </>
-                        ) : (
-                          <>
-                            <p className="text-sm text-slate-400">
-                              No prediction yet
-                            </p>
-
-                            <p className="text-sm font-black text-slate-500">
-                              -
-                            </p>
-                          </>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                </div>
+                  match={match}
+                  predictions={predictions}
+                />
               ))}
             </div>
           ) : (
             <p className="mt-5 rounded-lg border border-white/10 bg-white/[0.04] p-4 text-sm text-slate-300">
-              No member predictions found for the next match yet. Group members
-              need to submit their predictions before they appear here.
+              Could not find a current group match to display. Check that the
+              group has accepted members and that upcoming matches exist.
             </p>
           )}
         </section>
@@ -719,6 +679,105 @@ export function GroupDetailPage() {
         />
       ) : null}
     </main>
+  );
+}
+
+function GroupPredictionMatchCard({ match, predictions }) {
+  return (
+    <article className="overflow-hidden rounded-lg border border-white/10 bg-slate-950/72 shadow-xl">
+      <div className="bg-pitch-lines bg-[length:32px_32px] px-5 py-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <StatusBadge label={match.match_status} />
+
+          <span className="rounded-full border border-emerald-300/30 bg-emerald-300/10 px-3 py-1 text-xs font-black uppercase tracking-[0.16em] text-emerald-200">
+            Group picks
+          </span>
+        </div>
+      </div>
+
+      <div className="p-5">
+        <div className="flex items-center justify-between gap-4">
+          <GroupPredictionTeamName name={match.team_a} />
+
+          <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-black text-slate-300">
+            VS
+          </span>
+
+          <GroupPredictionTeamName name={match.team_b} align="right" />
+        </div>
+
+        <div className="mt-5 rounded-lg border border-white/10 bg-white/5 px-4 py-3 text-center text-2xl font-black text-white">
+          {match.team_a_score ?? "-"} : {match.team_b_score ?? "-"}
+        </div>
+
+        <div className="mt-5 grid gap-3 text-sm text-slate-300 sm:grid-cols-2">
+          <span className="flex items-center gap-2">
+            <CalendarDays size={16} className="text-emerald-300" />
+            {formatDateTime(match.match_date)}
+          </span>
+
+          <span className="flex items-center gap-2">
+            <Trophy size={16} className="text-gold-300" />
+            {match.stage ?? "Match"}
+          </span>
+
+          <span className="flex items-center gap-2 sm:col-span-2">
+            <MapPin size={16} className="text-sky-300" />
+            {[match.venue, match.city].filter(Boolean).join(", ") ||
+              "Venue not set"}
+          </span>
+        </div>
+
+        <div className="mt-5 overflow-hidden rounded-lg border border-white/10 bg-white/[0.04]">
+          {predictions.map((prediction) => (
+            <div
+              key={`${prediction.match_id}-${prediction.user_id}`}
+              className="grid gap-2 border-b border-white/10 px-4 py-3 last:border-b-0 sm:grid-cols-[1fr_1fr_auto]"
+            >
+              <p className="font-bold text-white">
+                {prediction.username ?? "Unknown player"}
+              </p>
+
+              {prediction.predicted_result ? (
+                <>
+                  <p className="text-sm text-slate-300">
+                    Pick: {formatPredictionResult(prediction, match)}
+                  </p>
+
+                  <p className="text-sm font-black text-emerald-200">
+                    {prediction.predicted_home_score} -{" "}
+                    {prediction.predicted_away_score}
+                  </p>
+                </>
+              ) : (
+                <>
+                  <p className="text-sm text-slate-400">No prediction yet</p>
+
+                  <p className="text-sm font-black text-slate-500">-</p>
+                </>
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
+    </article>
+  );
+}
+
+function GroupPredictionTeamName({ name, align = "left" }) {
+  return (
+    <div className={align === "right" ? "min-w-0 text-right" : "min-w-0"}>
+      <TeamFlag
+        className={align === "right" ? "mb-3 ml-auto" : "mb-3"}
+        size="xl"
+        teamName={name}
+        variant="premium"
+      />
+
+      <h3 className="break-words text-lg font-black text-white sm:text-xl">
+        {name}
+      </h3>
+    </div>
   );
 }
 
