@@ -46,12 +46,60 @@ function getPredictionLockMessage({ match, normalizedStatus }) {
   return "";
 }
 
+function getDraftScores(draft) {
+  const homeScore = Number(draft.homeScore);
+  const awayScore = Number(draft.awayScore);
+
+  if (!Number.isFinite(homeScore) || !Number.isFinite(awayScore)) {
+    return null;
+  }
+
+  return { homeScore, awayScore };
+}
+
+function getScoreResult(draft) {
+  const scores = getDraftScores(draft);
+  if (!scores) return "";
+
+  if (scores.homeScore > scores.awayScore) return "team_a";
+  if (scores.homeScore < scores.awayScore) return "team_b";
+  return "draw";
+}
+
+function getScoreConsistencyError({ draft, canDraw }) {
+  if (!draft.result) return "";
+
+  const scoreResult = getScoreResult(draft);
+  if (!scoreResult) return "";
+
+  if (draft.result === scoreResult) return "";
+
+  if (draft.result === "draw" && scoreResult !== "draw") {
+    return "Draw prediction requires equal scores.";
+  }
+
+  if (draft.result === "team_a" && scoreResult !== "team_a") {
+    return "The score must show the first team winning.";
+  }
+
+  if (draft.result === "team_b" && scoreResult !== "team_b") {
+    return "The score must show the second team winning.";
+  }
+
+  if (!canDraw && scoreResult === "draw") {
+    return "Knockout predictions cannot use a tied score.";
+  }
+
+  return "Prediction result and score do not match.";
+}
+
 function getPredictionHelperMessage({
   isAuthenticated,
   locked,
   lockMessage,
   draft,
   hasCompleteScore,
+  canDraw,
 }) {
   if (!isAuthenticated) {
     return "Log in to save your prediction before kickoff.";
@@ -73,14 +121,30 @@ function getPredictionHelperMessage({
     return "Enter both predicted scores before saving.";
   }
 
+  const consistencyError = getScoreConsistencyError({ draft, canDraw });
+  if (consistencyError) {
+    return consistencyError;
+  }
+
   return "Ready to save.";
 }
 
-function getSaveButtonLabel({ busy, locked, draft, hasCompleteScore, prediction }) {
+function getSaveButtonLabel({
+  busy,
+  locked,
+  draft,
+  hasCompleteScore,
+  prediction,
+  canDraw,
+}) {
   if (busy) return "Saving...";
   if (locked) return prediction ? "Prediction locked" : "Closed";
   if (!draft.result) return "Choose result";
   if (!hasCompleteScore) return "Enter score";
+
+  const consistencyError = getScoreConsistencyError({ draft, canDraw });
+  if (consistencyError) return "Fix result/score";
+
   return prediction ? "Update prediction" : "Save prediction";
 }
 
@@ -124,12 +188,21 @@ export function MatchCard({
     draft.awayScore !== null &&
     draft.awayScore !== undefined;
 
+  const scoreConsistencyError = getScoreConsistencyError({ draft, canDraw });
+  const canSave =
+    !locked &&
+    !busy &&
+    Boolean(draft.result) &&
+    hasCompleteScore &&
+    !scoreConsistencyError;
+
   const helperMessage = getPredictionHelperMessage({
     isAuthenticated,
     locked,
     lockMessage,
     draft,
     hasCompleteScore,
+    canDraw,
   });
 
   const saveButtonLabel = getSaveButtonLabel({
@@ -138,16 +211,13 @@ export function MatchCard({
     draft,
     hasCompleteScore,
     prediction,
+    canDraw,
   });
 
   const savePrediction = (nextResult = draft.result) => {
-    if (!nextResult) {
-      return;
-    }
-
-    if (!hasCompleteScore) {
-      return;
-    }
+    if (!nextResult) return;
+    if (!hasCompleteScore) return;
+    if (scoreConsistencyError) return;
 
     onPredict(match, nextResult, {
       predictedHomeScore: draft.homeScore,
@@ -271,8 +341,8 @@ export function MatchCard({
               <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_84px_84px] sm:items-end">
                 <p
                   className={`text-xs leading-5 ${
-                    locked
-                      ? "text-slate-400"
+                    scoreConsistencyError
+                      ? "text-rose-200"
                       : draft.result && hasCompleteScore
                         ? "text-emerald-200"
                         : "text-slate-400"
@@ -298,7 +368,7 @@ export function MatchCard({
 
               <button
                 type="button"
-                disabled={locked || busy || !draft.result || !hasCompleteScore}
+                disabled={!canSave}
                 onClick={() => savePrediction()}
                 className="w-full rounded-full border border-emerald-300/40 px-4 py-2 text-sm font-black text-emerald-100 transition hover:bg-emerald-300 hover:text-emerald-950 disabled:cursor-not-allowed disabled:opacity-60"
               >

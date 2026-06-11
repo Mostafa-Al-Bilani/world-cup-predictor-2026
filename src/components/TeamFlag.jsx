@@ -1,53 +1,138 @@
-import { useState } from 'react';
-import { Shield } from 'lucide-react';
-import clsx from 'clsx';
-import { getTeamFlagInfo } from '../utils/flags';
+import clsx from "clsx";
 
-const sizeClasses = {
+const teamFlagCodes = {
+  Argentina: "ar",
+  Australia: "au",
+  Austria: "at",
+  Belgium: "be",
+  Brazil: "br",
+  Cameroon: "cm",
+  Canada: "ca",
+  "Cape Verde": "cv",
+  Chile: "cl",
+  China: "cn",
+  Colombia: "co",
+  "Costa Rica": "cr",
+  Croatia: "hr",
+  Curaçao: "cw",
+  Curacao: "cw",
+  Denmark: "dk",
+  Ecuador: "ec",
+  Egypt: "eg",
+  England: "gb-eng",
+  France: "fr",
+  Germany: "de",
+  Ghana: "gh",
+  Greece: "gr",
+  Honduras: "hn",
+  Iran: "ir",
+  Iraq: "iq",
+  Italy: "it",
+  Japan: "jp",
+  Jordan: "jo",
+  "Korea Republic": "kr",
+  "South Korea": "kr",
+  Mexico: "mx",
+  Morocco: "ma",
+  Netherlands: "nl",
+  "New Zealand": "nz",
+  Nigeria: "ng",
+  Norway: "no",
+  Panama: "pa",
+  Paraguay: "py",
+  Peru: "pe",
+  Poland: "pl",
+  Portugal: "pt",
+  Qatar: "qa",
+  Romania: "ro",
+  Russia: "ru",
+  "Saudi Arabia": "sa",
+  Scotland: "gb-sct",
+  Senegal: "sn",
+  Serbia: "rs",
+  Slovakia: "sk",
+  Slovenia: "si",
+  "South Africa": "za",
+  Spain: "es",
+  Sweden: "se",
+  Switzerland: "ch",
+  Tunisia: "tn",
+  Turkey: "tr",
+  Türkiye: "tr",
+  Ukraine: "ua",
+  Uruguay: "uy",
+  USA: "us",
+  "United States": "us",
+  Uzbekistan: "uz",
+  Venezuela: "ve",
+  Wales: "gb-wls",
+};
+
+const sizeStyles = {
   sm: {
-    box: 'h-5 w-7 rounded',
-    icon: 13,
+    wrapper: "h-7 w-8 rounded-lg",
+    flag: "text-[1.25rem]",
   },
   md: {
-    box: 'h-7 w-10 rounded-md',
-    icon: 15,
+    wrapper: "h-10 w-12 rounded-xl",
+    flag: "text-[1.65rem]",
   },
   lg: {
-    box: 'h-10 w-14 rounded-md',
-    icon: 18,
+    wrapper: "h-12 w-14 rounded-2xl",
+    flag: "text-[1.95rem]",
   },
   xl: {
-    box: 'h-14 w-20 rounded-lg',
-    icon: 22,
+    wrapper: "h-16 w-20 rounded-2xl",
+    flag: "text-[2.7rem]",
   },
 };
 
-export function TeamFlag({ className, size = 'md', teamName }) {
-  const [failed, setFailed] = useState(false);
-  const flag = getTeamFlagInfo(teamName);
-  const sizing = sizeClasses[size] ?? sizeClasses.md;
+export function TeamFlag({ teamName, size = "md", className }) {
+  const flagCode = teamFlagCodes[teamName];
+  const styles = sizeStyles[size] ?? sizeStyles.md;
+  const isPremium = size === "xl";
 
   return (
     <span
       className={clsx(
-        'inline-grid shrink-0 place-items-center overflow-hidden border border-white/10 bg-white/5 text-emerald-200 shadow-sm',
-        sizing.box,
+        "relative inline-flex shrink-0 items-center justify-center overflow-hidden border border-white/10 bg-slate-950/85",
+        "shadow-[inset_0_1px_0_rgba(255,255,255,0.12),0_12px_30px_rgba(0,0,0,0.35)]",
+        styles.wrapper,
+        isPremium &&
+          "before:absolute before:inset-0 before:bg-[radial-gradient(circle_at_50%_15%,rgba(255,255,255,0.16),transparent_42%)] after:absolute after:inset-x-2 after:bottom-1 after:h-2 after:rounded-full after:bg-emerald-300/10 after:blur-md",
         className,
       )}
-      title={flag ? `${teamName} flag` : undefined}
+      title={teamName}
+      aria-label={`${teamName} flag`}
     >
-      {flag && !failed ? (
-        <img
-          alt={`${teamName} flag`}
-          className="h-full w-full object-cover"
-          loading="lazy"
-          referrerPolicy="no-referrer"
-          src={flag.imageUrl}
-          onError={() => setFailed(true)}
+      {flagCode ? (
+        <span
+          className={clsx(
+            "fi relative z-10 rounded-[0.2rem] shadow-[0_2px_10px_rgba(0,0,0,0.35)]",
+            `fi-${flagCode}`,
+            styles.flag,
+          )}
         />
       ) : (
-        <Shield size={sizing.icon} />
+        <span
+          className={clsx(
+            "relative z-10 text-xs font-black uppercase tracking-widest text-slate-300",
+            size === "xl" && "text-sm",
+          )}
+        >
+          {getFallbackCode(teamName)}
+        </span>
       )}
     </span>
   );
+}
+
+function getFallbackCode(teamName) {
+  return String(teamName ?? "TBD")
+    .trim()
+    .split(/\s+/)
+    .map((word) => word[0])
+    .join("")
+    .slice(0, 3)
+    .toUpperCase();
 }
