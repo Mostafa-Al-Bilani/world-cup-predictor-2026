@@ -2925,3 +2925,425 @@ grant select on public.group_members to authenticated;
 grant select on public.group_invitations to authenticated;
 grant select on public.world_cup_winner_predictions to authenticated;
 grant select on public.stage_predictions to authenticated;
+-- =====================================================================
+-- FINAL SCORING / LIVE GROUP PREDICTION PATCH
+-- This block intentionally appears at the end so it overrides older
+-- definitions above and keeps schema.sql safe as a complete replacement.
+-- =====================================================================
+
+-- Ensure scoring helper updates can run from Edge Functions/service_role
+-- without being blocked by user-facing prediction lock triggers.
+
+create or replace function public.prevent_locked_match_predictions()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  starts_at timestamptz;
+  current_status text;
+  current_stage text;
+  current_team_a text;
+  current_team_b text;
+begin
+  -- Backend/admin scoring updates must not be blocked by match lock rules.
+  if coalesce(auth.role(), '') = 'service_role' or public.is_admin(auth.uid()) then
+    return new;
+  end if;
+
+  select match_date, status, stage, team_a, team_b
+  into starts_at, current_status, current_stage, current_team_a, current_team_b
+  from public.matches
+  where id = new.match_id;
+
+  if starts_at is null then
+    raise exception 'Match not found.';
+  end if;
+
+  if public.is_placeholder_team_name(current_team_a)
+     or public.is_placeholder_team_name(current_team_b) then
+    raise exception 'Predictions open when both real teams are known.';
+  end if;
+
+  if starts_at <= now() then
+    raise exception 'Predictions are locked because the match has already started.';
+  end if;
+
+  if current_status <> 'upcoming' then
+    raise exception 'Predictions are locked because this match is not open for predictions.';
+  end if;
+
+  if new.predicted_result = 'draw'
+     and not public.match_allows_draw(current_stage) then
+    raise exception 'Draw predictions are only allowed for group-stage matches.';
+  end if;
+
+  return new;
+end;
+$$;
+
+create or replace function public.prevent_locked_prediction_change()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  starts_at timestamptz;
+  current_status text;
+  current_stage text;
+  current_team_a text;
+  current_team_b text;
+begin
+  -- Backend/admin scoring updates must not be blocked by match lock rules.
+  if coalesce(auth.role(), '') = 'service_role' or public.is_admin(auth.uid()) then
+    return new;
+  end if;
+
+  select match_date, status, stage, team_a, team_b
+  into starts_at, current_status, current_stage, current_team_a, current_team_b
+  from public.matches
+  where id = new.match_id;
+
+  if starts_at is null then
+    raise exception 'Match not found.';
+  end if;
+
+  if public.is_placeholder_team_name(current_team_a)
+     or public.is_placeholder_team_name(current_team_b) then
+    raise exception 'Predictions open when both real teams are known.';
+  end if;
+
+  if starts_at <= now() then
+    raise exception 'Predictions are locked because the match has already started.';
+  end if;
+
+  if current_status <> 'upcoming' then
+    raise exception 'Predictions are locked because this match is not open for predictions.';
+  end if;
+
+  if new.predicted_result = 'draw'
+     and not public.match_allows_draw(current_stage) then
+    raise exception 'Draw predictions are only allowed for group-stage matches.';
+  end if;
+
+  return new;
+end;
+$$;
+
+create or replace function public.prevent_incomplete_score_predictions()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  -- Backend/admin scoring updates must not be blocked by user input validation.
+  if coalesce(auth.role(), '') = 'service_role' or public.is_admin(auth.uid()) then
+    return new;
+  end if;
+
+  if new.predicted_home_score is null or new.predicted_away_score is null then
+    raise exception 'Enter both scores before saving your prediction.';
+  end if;
+
+  return new;
+end;
+$$;
+
+-- Remove any older lock triggers, then recreate only the safe triggers.
+drop trigger if exists predictions_prevent_locked_insert on public.predictions;
+drop trigger if exists predictions_prevent_locked_update on public.predictions;
+drop trigger if exists predictions_prevent_locked_match_insert on public.predictions;
+drop trigger if exists predictions_prevent_locked_match_update on public.predictions;
+
+create trigger predictions_prevent_locked_insert
+before insert on public.predictions
+for each row
+execute function public.prevent_locked_prediction_change();
+
+create trigger predictions_prevent_locked_update
+before update of predicted_result, predicted_home_score, predicted_away_score
+on public.predictions
+for each row
+execute function public.prevent_locked_prediction_change();
+
+-- Keep score completeness validation only for user-editable prediction input.
+drop trigger if exists predictions_require_scores_trigger on public.predictions;
+
+create trigger predictions_require_scores_trigger
+before insert or update of predicted_result, predicted_home_score, predicted_away_score
+on public.predictions
+for each row
+execute function public.prevent_incomplete_score_predictions();
+
+-- Total points remain the real combined score:
+-- match winner + exact score + champion + bracket.
+-- Accuracy is based only on finished match predictions, not future predictions.
+create or replace function public.recalculate_profile_totals(target_user_id uuid)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  update public.profiles
+  set
+    total_points =
+      coalesce(summary.match_winner_points, 0)
+      + coalesce(summary.exact_score_points, 0)
+      + coalesce(champion.summary_points, 0)
+      + coalesce(bracket.summary_points, 0),
+    match_winner_points = coalesce(summary.match_winner_points, 0),
+    exact_score_points = coalesce(summary.exact_score_points, 0),
+    champion_points = coalesce(champion.summary_points, 0),
+    bracket_points = coalesce(bracket.summary_points, 0),
+    correct_predictions = coalesce(summary.correct_predictions, 0),
+    total_predictions = coalesce(summary.finished_predictions, 0)
+  from (
+    select
+      target_user_id as user_id,
+      coalesce(sum(p.winner_points), 0)::integer as match_winner_points,
+      coalesce(sum(p.exact_score_points), 0)::integer as exact_score_points,
+      count(*) filter (
+        where m.status = 'finished'
+          and p.is_correct = true
+      )::integer as correct_predictions,
+      count(*) filter (
+        where m.status = 'finished'
+      )::integer as finished_predictions
+    from public.predictions p
+    join public.matches m
+      on m.id = p.match_id
+    where p.user_id = target_user_id
+  ) summary,
+  (
+    select coalesce(sum(points_awarded), 0)::integer as summary_points
+    from public.world_cup_winner_predictions
+    where user_id = target_user_id
+  ) champion,
+  (
+    select coalesce(sum(points_awarded), 0)::integer as summary_points
+    from public.stage_predictions
+    where user_id = target_user_id
+  ) bracket
+  where profiles.id = summary.user_id;
+end;
+$$;
+
+-- Recreate match scoring function after the safe triggers above.
+create or replace function public.recalculate_match_points(target_match_id uuid)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  final_result text;
+  final_team_a_score integer;
+  final_team_b_score integer;
+begin
+  if coalesce(auth.role(), '') <> 'service_role' and not public.is_admin(auth.uid()) then
+    raise exception 'Only admins can recalculate points';
+  end if;
+
+  select result, team_a_score, team_b_score
+  into final_result, final_team_a_score, final_team_b_score
+  from public.matches
+  where id = target_match_id
+    and status = 'finished';
+
+  if final_result is null or final_team_a_score is null or final_team_b_score is null then
+    raise exception 'Match must be finished and have a result and final score';
+  end if;
+
+  with scored as (
+    select
+      id,
+      case when predicted_result = final_result then 1 else 0 end as next_winner_points,
+      case
+        when predicted_result = final_result
+          and predicted_home_score is not null
+          and predicted_away_score is not null
+          and predicted_home_score = final_team_a_score
+          and predicted_away_score = final_team_b_score
+        then 1
+        else 0
+      end as next_exact_score_points
+    from public.predictions
+    where match_id = target_match_id
+  )
+  update public.predictions
+  set
+    is_correct = scored.next_winner_points = 1,
+    winner_points = scored.next_winner_points,
+    exact_score_points = scored.next_exact_score_points,
+    total_points = scored.next_winner_points + scored.next_exact_score_points,
+    points_awarded = scored.next_winner_points + scored.next_exact_score_points,
+    updated_at = now()
+  from scored
+  where predictions.id = scored.id;
+
+  perform public.recalculate_profile_totals(user_id)
+  from public.predictions
+  where match_id = target_match_id
+  group by user_id;
+
+  perform public.recalculate_champion_points();
+  perform public.recalculate_stage_prediction_points(null);
+end;
+$$;
+
+-- Group match prediction card needs live score fields.
+drop function if exists public.get_live_group_predictions(uuid);
+
+create function public.get_live_group_predictions(target_group_id uuid)
+returns table (
+  match_id uuid,
+  match_number integer,
+  team_a text,
+  team_b text,
+  team_a_score integer,
+  team_b_score integer,
+  match_status text,
+  match_date timestamptz,
+  stage text,
+  venue text,
+  city text,
+  elapsed integer,
+  status_detail text,
+  user_id uuid,
+  username text,
+  predicted_result text,
+  predicted_home_score integer,
+  predicted_away_score integer
+)
+language sql
+security definer
+set search_path = public, extensions
+as $$
+  with target_match as (
+    select
+      m.id,
+      m.match_number,
+      m.team_a,
+      m.team_b,
+      m.team_a_score,
+      m.team_b_score,
+      m.status,
+      m.match_date,
+      m.stage,
+      m.venue,
+      m.city,
+      m.elapsed,
+      m.status_detail
+    from public.matches m
+    where m.match_date is not null
+      and m.team_a is not null
+      and m.team_b is not null
+      and lower(coalesce(m.status, '')) not in (
+        'finished',
+        'completed',
+        'final',
+        'full_time',
+        'full time',
+        'ft',
+        'cancelled',
+        'postponed'
+      )
+      and not public.is_placeholder_team_name(m.team_a)
+      and not public.is_placeholder_team_name(m.team_b)
+    order by
+      case
+        when lower(coalesce(m.status, '')) in (
+          'live',
+          'in_progress',
+          'in progress',
+          'halftime',
+          'half_time',
+          'half time',
+          'ht',
+          'extra_time',
+          'extra time',
+          'penalties',
+          'penalty',
+          'penalty_shootout'
+        ) then 0
+        else 1
+      end,
+      m.match_date asc
+    limit 1
+  )
+  select
+    tm.id as match_id,
+    tm.match_number,
+    tm.team_a,
+    tm.team_b,
+    tm.team_a_score,
+    tm.team_b_score,
+    tm.status as match_status,
+    tm.match_date,
+    tm.stage,
+    tm.venue,
+    tm.city,
+    tm.elapsed,
+    tm.status_detail,
+    gm.user_id,
+    coalesce(lp.username, 'Unknown player') as username,
+    pr.predicted_result,
+    pr.predicted_home_score,
+    pr.predicted_away_score
+  from target_match tm
+  join public.groups g
+    on g.id = target_group_id
+   and g.live_predictions_enabled = true
+  join public.group_members gm
+    on gm.group_id = target_group_id
+   and gm.status = 'accepted'
+  left join public.predictions pr
+    on pr.match_id = tm.id
+   and pr.user_id = gm.user_id
+  left join public.leaderboard_profiles lp
+    on lp.id = gm.user_id
+  where public.is_group_member(target_group_id, auth.uid())
+  order by
+    lp.username asc nulls last,
+    gm.created_at asc;
+$$;
+
+-- Refresh profile/public leaderboard totals after installing the corrected functions.
+do $$
+declare
+  profile_record record;
+begin
+  for profile_record in
+    select id from public.profiles
+  loop
+    perform public.recalculate_profile_totals(profile_record.id);
+  end loop;
+end;
+$$;
+
+-- Keep hardening and grants correct after recreating functions.
+alter function public.prevent_locked_match_predictions() set search_path = public, extensions;
+alter function public.prevent_locked_prediction_change() set search_path = public, extensions;
+alter function public.prevent_incomplete_score_predictions() set search_path = public, extensions;
+alter function public.recalculate_profile_totals(uuid) set search_path = public, extensions;
+alter function public.recalculate_match_points(uuid) set search_path = public, extensions;
+alter function public.get_live_group_predictions(uuid) set search_path = public, extensions;
+
+revoke execute on function public.prevent_locked_match_predictions() from public, anon, authenticated;
+revoke execute on function public.prevent_locked_prediction_change() from public, anon, authenticated;
+revoke execute on function public.prevent_incomplete_score_predictions() from public, anon, authenticated;
+revoke execute on function public.recalculate_profile_totals(uuid) from public, anon, authenticated;
+revoke execute on function public.recalculate_match_points(uuid) from public, anon, authenticated;
+revoke execute on function public.get_live_group_predictions(uuid) from public, anon;
+
+grant execute on function public.prevent_locked_match_predictions() to service_role;
+grant execute on function public.prevent_locked_prediction_change() to service_role;
+grant execute on function public.prevent_incomplete_score_predictions() to service_role;
+grant execute on function public.recalculate_profile_totals(uuid) to service_role;
+grant execute on function public.recalculate_match_points(uuid) to service_role;
+grant execute on function public.get_live_group_predictions(uuid) to authenticated, service_role;
+
