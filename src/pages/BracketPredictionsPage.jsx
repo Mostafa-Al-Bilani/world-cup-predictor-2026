@@ -5,8 +5,8 @@ import { EmptyState } from "../components/EmptyState";
 import { LoadingSpinner } from "../components/LoadingSpinner";
 import { TeamFlag } from "../components/TeamFlag";
 import { useAuth } from "../context/AuthContext";
-import { matchService } from "../services/matchService";
 import { championService } from "../services/championService";
+import { matchService } from "../services/matchService";
 import { stagePredictionService } from "../services/stagePredictionService";
 import { formatDateTime } from "../utils/date";
 import { getSafeErrorMessage } from "../utils/errors";
@@ -14,7 +14,10 @@ import {
   STAGE_PREDICTION_CONFIGS,
   getActualTeamsForStage,
   getStageLockAt,
+  getStageOpenAt,
+  getStageWindowMessage,
   isStageLocked,
+  isStageOpen,
   validateStageSelection,
 } from "../utils/stagePredictions";
 
@@ -51,8 +54,8 @@ const isGroupStage = (stage) => normalizeText(stage).startsWith("group");
 
 const extractGroupLabel = (stage) => {
   const text = String(stage ?? "").trim();
-
   const groupMatch = text.match(/group\s+([a-z0-9]+)/i);
+
   if (groupMatch?.[1]) {
     return `Group ${groupMatch[1].toUpperCase()}`;
   }
@@ -72,6 +75,7 @@ const buildTeamGroupMap = (matches) => {
       if (!team) return;
 
       const normalizedTeam = normalizeText(team);
+
       if (
         !normalizedTeam ||
         normalizedTeam === "tbd" ||
@@ -142,9 +146,11 @@ export function BracketPredictionsPage() {
     refreshChampionPrediction,
     user,
   } = useAuth();
+
   const [availableTeams, setAvailableTeams] = useState([]);
   const [matches, setMatches] = useState([]);
   const [predictions, setPredictions] = useState([]);
+  const [stageWindows, setStageWindows] = useState([]);
   const [championPick, setChampionPick] = useState(
     contextChampionPrediction ?? null,
   );
@@ -156,14 +162,19 @@ export function BracketPredictionsPage() {
     setLoading(true);
 
     try {
-      const [teams, matchRows, predictionRows, championRow] = await Promise.all(
-        [
-          stagePredictionService.getAvailableTeams(),
-          matchService.getMatches(),
-          stagePredictionService.getMyPredictions(user.id),
-          championService.getMyPrediction(user.id),
-        ],
-      );
+      const [
+        teams,
+        matchRows,
+        predictionRows,
+        championRow,
+        stageWindowRows,
+      ] = await Promise.all([
+        stagePredictionService.getAvailableTeams(),
+        matchService.getMatches(),
+        stagePredictionService.getMyPredictions(user.id),
+        championService.getMyPrediction(user.id),
+        stagePredictionService.getStageWindows(),
+      ]);
 
       const nextDrafts = Object.fromEntries(
         STAGE_PREDICTION_CONFIGS.map((stage) => [
@@ -176,6 +187,7 @@ export function BracketPredictionsPage() {
       setAvailableTeams(teams);
       setMatches(matchRows);
       setPredictions(predictionRows);
+      setStageWindows(stageWindowRows);
       setDrafts(nextDrafts);
       setChampionPick(championRow ?? contextChampionPrediction ?? null);
 
@@ -321,8 +333,9 @@ export function BracketPredictionsPage() {
 
   const saveStage = async (stage) => {
     const { dependencyReady, previousStageConfig } = getStageDependency(stage);
+    const stageIsOpen = isStageOpen(stageWindows, stage);
 
-    if (!dependencyReady) {
+    if (!dependencyReady && !stageIsOpen) {
       toast.error(
         `This round opens after the ${previousStageConfig.label} teams are known.`,
       );
@@ -373,7 +386,7 @@ export function BracketPredictionsPage() {
 
   const visibleStages = STAGE_PREDICTION_CONFIGS.filter((stage) => {
     const { dependencyReady } = getStageDependency(stage.key);
-    return dependencyReady;
+    return dependencyReady || isStageOpen(stageWindows, stage.key);
   });
 
   return (
@@ -420,9 +433,9 @@ export function BracketPredictionsPage() {
         </p>
 
         <p className="mt-1 text-sm text-slate-200">
-          Start with the Round of 32. Later rounds appear only after the
-          previous round&apos;s actual qualified teams are known from synced
-          fixtures.
+          Round of 32 closes on June 16, 2026. Later rounds open after the
+          previous round&apos;s qualified teams are known, then close 24 hours
+          later.
         </p>
 
         <p className="mt-2 text-sm text-slate-200">
@@ -443,13 +456,23 @@ export function BracketPredictionsPage() {
           {visibleStages.map((stage) => {
             const prediction = predictionByStage.get(stage.key);
             const selected = drafts[stage.key] ?? [];
-            const lockAt = getStageLockAt(matches, stage.key);
+            const lockAt = getStageLockAt(matches, stage.key, stageWindows);
+            const openedAt = getStageOpenAt(stageWindows, stage.key);
             const locked = isStageLocked(lockAt);
             const actualTeams = getActualTeamsForStage(matches, stage.key);
             const selectableTeams = getSelectableTeamsForStage(stage.key);
             const groupedTeams = groupSelectableTeams({
               teams: selectableTeams,
               teamGroupMap,
+            });
+
+            const { previousStageConfig } = getStageDependency(stage.key);
+
+            const windowMessage = getStageWindowMessage({
+              stage: stage.key,
+              lockAt,
+              openedAt,
+              dependencyLabel: previousStageConfig?.label,
             });
 
             const status = stageStatus({
@@ -505,13 +528,17 @@ export function BracketPredictionsPage() {
                     </div>
                   </div>
 
-                  <div className="mt-4 flex flex-col gap-2 text-sm text-slate-300 sm:flex-row sm:items-center sm:justify-between">
-                    <span className="inline-flex items-center gap-2">
-                      <Lock size={15} className="text-slate-400" />
-                      {lockAt
-                        ? `Locks ${formatDateTime(lockAt)}`
-                        : "Locks when this stage begins"}
-                    </span>
+                  <div className="mt-4 grid gap-3 text-sm text-slate-300 lg:grid-cols-[1fr_auto] lg:items-center">
+                    <div className="rounded-lg border border-white/10 bg-slate-950/60 p-3">
+                      <span className="inline-flex items-center gap-2 font-bold text-white">
+                        <Lock size={15} className="text-gold-300" />
+                        {lockAt ? `Closes ${formatDateTime(lockAt)}` : "Not open yet"}
+                      </span>
+
+                      <p className="mt-1 text-xs leading-5 text-slate-400">
+                        {windowMessage}
+                      </p>
+                    </div>
 
                     <span className="inline-flex items-center gap-2">
                       <CheckCircle2 size={15} className="text-emerald-300" />
@@ -568,9 +595,11 @@ export function BracketPredictionsPage() {
                                   } disabled:cursor-not-allowed disabled:opacity-55`}
                                 >
                                   <TeamFlag size="md" teamName={team} />
+
                                   <span className="min-w-0 flex-1 truncate text-sm font-black">
                                     {team}
                                   </span>
+
                                   <span className="shrink-0 rounded-full bg-slate-950/80 px-2 py-1 text-[10px] font-black uppercase text-slate-400">
                                     {teamGroupMap.get(team) ?? "Other"}
                                   </span>
