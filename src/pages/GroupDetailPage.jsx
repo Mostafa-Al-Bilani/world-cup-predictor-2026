@@ -36,9 +36,11 @@ export function GroupDetailPage() {
     () => members.find((member) => member.user_id === user?.id),
     [members, user?.id],
   );
+
   const canManage =
     group?.owner_id === user?.id ||
     ["owner", "admin"].includes(currentMember?.role);
+
   const isOwner = group?.owner_id === user?.id;
 
   const inviteLink = group?.invite_code
@@ -47,8 +49,10 @@ export function GroupDetailPage() {
 
   const load = useCallback(async () => {
     setLoading(true);
+
     try {
       const groupRow = await groupService.getGroup(groupId, user?.id);
+
       if (!groupRow) {
         setGroup(null);
         return;
@@ -59,6 +63,7 @@ export function GroupDetailPage() {
         groupService.getGroupLeaderboard(groupId),
         groupService.getGroupInvitations(groupId).catch(() => []),
       ]);
+
       setGroup(groupRow);
       setEditForm({
         name: groupRow.name,
@@ -91,7 +96,10 @@ export function GroupDetailPage() {
       setLivePredictions(rows);
     } catch (error) {
       toast.error(
-        getSafeErrorMessage(error, "Could not load live group predictions."),
+        getSafeErrorMessage(
+          error,
+          "Could not load group match predictions.",
+        ),
       );
     } finally {
       setLivePredictionsLoading(false);
@@ -122,6 +130,7 @@ export function GroupDetailPage() {
   const searchProfiles = async (event) => {
     event.preventDefault();
     setSearching(true);
+
     try {
       setSearchResults(await groupService.searchProfiles(searchQuery, groupId));
     } catch (error) {
@@ -183,12 +192,12 @@ export function GroupDetailPage() {
 
       toast.success(
         enabled
-          ? "Live group predictions enabled."
-          : "Live group predictions disabled.",
+          ? "Group match predictions enabled."
+          : "Group match predictions disabled.",
       );
     } catch (error) {
       toast.error(
-        getSafeErrorMessage(error, "Could not update live prediction setting."),
+        getSafeErrorMessage(error, "Could not update prediction setting."),
       );
     } finally {
       setLiveSettingBusy(false);
@@ -198,6 +207,7 @@ export function GroupDetailPage() {
   const updateGroup = async (event) => {
     event.preventDefault();
     setSaving(true);
+
     try {
       const updated = await groupService.updateGroup({ groupId, ...editForm });
       setGroup(updated);
@@ -211,6 +221,7 @@ export function GroupDetailPage() {
 
   const regenerateCode = async () => {
     setSaving(true);
+
     try {
       const updated = await groupService.regenerateInviteCode(groupId);
       setGroup(updated);
@@ -226,6 +237,7 @@ export function GroupDetailPage() {
 
   const runConfirmedAction = async () => {
     if (!confirmAction) return;
+
     try {
       if (confirmAction.type === "remove") {
         await groupService.removeMember({
@@ -235,11 +247,13 @@ export function GroupDetailPage() {
         toast.success("Member removed.");
         await load();
       }
+
       if (confirmAction.type === "leave") {
         await groupService.leaveGroup({ groupId, userId: user.id });
         toast.success("You left the group.");
         navigate("/groups");
       }
+
       if (confirmAction.type === "delete") {
         await groupService.deleteGroup(groupId);
         toast.success("Group deleted.");
@@ -275,22 +289,28 @@ export function GroupDetailPage() {
           >
             Back to groups
           </Link>
+
           <p className="mt-5 text-sm font-black uppercase tracking-[0.32em] text-emerald-300">
             Private leaderboard
           </p>
+
           <h1 className="mt-3 text-4xl font-black sm:text-5xl">{group.name}</h1>
+
           <p className="mt-3 max-w-2xl text-slate-300">
             {group.description || "No description yet."}
           </p>
         </div>
+
         <div className="rounded-lg border border-white/10 bg-white/[0.04] px-5 py-4">
           <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-400">
             Invite code
           </p>
+
           <div className="mt-2 flex items-center gap-3">
             <code className="rounded bg-slate-950/70 px-3 py-2 font-mono text-lg font-black text-white">
               {group.invite_code}
             </code>
+
             <button
               type="button"
               onClick={() => copyInvite(group.invite_code, "Invite code")}
@@ -308,6 +328,7 @@ export function GroupDetailPage() {
           <section className="mt-10">
             <TopThreePodium users={leaderboard} />
           </section>
+
           <section className="mt-8">
             <ScoreboardTable users={leaderboard} currentUserId={user?.id} />
           </section>
@@ -326,10 +347,11 @@ export function GroupDetailPage() {
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <p className="text-xs font-black uppercase tracking-[0.24em] text-emerald-300">
-                Live Group Predictions
+                Group Match Predictions
               </p>
+
               <h2 className="mt-2 text-2xl font-black text-white">
-                Member picks during live matches
+                Member picks for the next match
               </h2>
             </div>
 
@@ -364,6 +386,7 @@ export function GroupDetailPage() {
                       <p className="text-lg font-black text-white">
                         {match.team_a} vs {match.team_b}
                       </p>
+
                       <p className="text-xs font-bold uppercase tracking-wide text-emerald-200">
                         {match.match_status}
                       </p>
@@ -381,17 +404,31 @@ export function GroupDetailPage() {
                         className="grid gap-2 border-b border-white/10 px-4 py-3 last:border-b-0 sm:grid-cols-[1fr_1fr_auto]"
                       >
                         <p className="font-bold text-white">
-                          {prediction.username}
+                          {prediction.username ?? "Unknown player"}
                         </p>
 
-                        <p className="text-sm text-slate-300">
-                          Pick: {formatPredictionResult(prediction, match)}
-                        </p>
+                        {prediction.predicted_result ? (
+                          <>
+                            <p className="text-sm text-slate-300">
+                              Pick: {formatPredictionResult(prediction, match)}
+                            </p>
 
-                        <p className="text-sm font-black text-emerald-200">
-                          {prediction.predicted_home_score} -{" "}
-                          {prediction.predicted_away_score}
-                        </p>
+                            <p className="text-sm font-black text-emerald-200">
+                              {prediction.predicted_home_score} -{" "}
+                              {prediction.predicted_away_score}
+                            </p>
+                          </>
+                        ) : (
+                          <>
+                            <p className="text-sm text-slate-400">
+                              No prediction yet
+                            </p>
+
+                            <p className="text-sm font-black text-slate-500">
+                              -
+                            </p>
+                          </>
+                        )}
                       </div>
                     ))}
                   </div>
@@ -400,8 +437,8 @@ export function GroupDetailPage() {
             </div>
           ) : (
             <p className="mt-5 rounded-lg border border-white/10 bg-white/[0.04] p-4 text-sm text-slate-300">
-              No live group predictions are available right now. This section
-              appears only during live or halftime matches.
+              No member predictions found for the next match yet. Group members
+              need to submit their predictions before they appear here.
             </p>
           )}
         </section>
@@ -411,10 +448,12 @@ export function GroupDetailPage() {
         <div className="rounded-lg border border-white/10 bg-slate-950/72">
           <div className="border-b border-white/10 p-5">
             <h2 className="text-2xl font-black">Members</h2>
+
             <p className="mt-2 text-sm text-slate-400">
               Only accepted members appear in this group leaderboard.
             </p>
           </div>
+
           <div className="divide-y divide-white/10">
             {members.map((member) => (
               <article key={member.id} className="p-5">
@@ -424,19 +463,23 @@ export function GroupDetailPage() {
                       <h3 className="text-lg font-black text-white">
                         {member.profile.username}
                       </h3>
+
                       <span className="rounded-full border border-white/10 px-2 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-slate-300">
                         {member.role}
                       </span>
+
                       {member.user_id === user?.id ? (
                         <span className="rounded-full bg-emerald-300 px-2 py-1 text-[10px] font-black uppercase text-emerald-950">
                           You
                         </span>
                       ) : null}
                     </div>
+
                     <p className="mt-1 text-sm text-slate-400">
                       Joined {formatDate(member.created_at)}
                     </p>
                   </div>
+
                   {canManage && member.user_id !== group.owner_id ? (
                     <button
                       type="button"
@@ -462,9 +505,11 @@ export function GroupDetailPage() {
                 <h2 className="text-xl font-black text-white">
                   Invite friends
                 </h2>
+
                 <p className="mt-2 text-sm text-slate-300">
                   Search existing users by username or email.
                 </p>
+
                 <form onSubmit={searchProfiles} className="mt-4 flex gap-2">
                   <input
                     value={searchQuery}
@@ -473,6 +518,7 @@ export function GroupDetailPage() {
                     className="min-w-0 flex-1 rounded-lg border border-white/10 bg-white/5 px-4 py-3 text-sm text-white outline-none focus:border-emerald-300"
                     placeholder="username or email"
                   />
+
                   <button
                     type="submit"
                     disabled={searching || searchQuery.trim().length < 2}
@@ -494,10 +540,12 @@ export function GroupDetailPage() {
                           <p className="truncate font-bold text-white">
                             {profile.username}
                           </p>
+
                           <p className="truncate text-xs text-slate-400">
                             {profile.email}
                           </p>
                         </div>
+
                         <button
                           type="button"
                           disabled={invitingId === profile.id}
@@ -525,6 +573,7 @@ export function GroupDetailPage() {
                 <h2 className="text-xl font-black text-white">
                   Pending invites
                 </h2>
+
                 {invitations.length ? (
                   <div className="mt-4 space-y-2">
                     {invitations.map((invitation) => (
@@ -536,6 +585,7 @@ export function GroupDetailPage() {
                           {invitation.invited_profile?.username ??
                             "Invited user"}
                         </p>
+
                         <p className="text-xs text-slate-400">
                           Sent {formatDate(invitation.created_at)}
                         </p>
@@ -568,16 +618,19 @@ export function GroupDetailPage() {
 
                   <span>
                     <span className="block text-sm font-black text-white">
-                      Reveal live group predictions
+                      Reveal group match predictions
                     </span>
+
                     <span className="mt-1 block text-xs leading-5 text-slate-300">
-                      Show member predictions only while a match is live or at
-                      halftime.
+                      Show member predictions for the next upcoming or live
+                      match until it finishes.
                     </span>
                   </span>
                 </label>
+
                 <label className="mt-4 block">
                   <span className="text-sm font-bold text-slate-300">Name</span>
+
                   <input
                     required
                     value={editForm.name}
@@ -591,10 +644,12 @@ export function GroupDetailPage() {
                     className="mt-2 w-full rounded-lg border border-white/10 bg-white/5 px-4 py-3 text-sm text-white outline-none focus:border-emerald-300"
                   />
                 </label>
+
                 <label className="mt-4 block">
                   <span className="text-sm font-bold text-slate-300">
                     Description
                   </span>
+
                   <textarea
                     value={editForm.description}
                     onChange={(event) =>
@@ -607,6 +662,7 @@ export function GroupDetailPage() {
                     className="mt-2 min-h-24 w-full rounded-lg border border-white/10 bg-white/5 px-4 py-3 text-sm text-white outline-none focus:border-emerald-300"
                   />
                 </label>
+
                 <button
                   type="submit"
                   disabled={saving}
@@ -614,6 +670,7 @@ export function GroupDetailPage() {
                 >
                   {saving ? "Saving..." : "Save settings"}
                 </button>
+
                 <button
                   type="button"
                   disabled={saving}
@@ -629,6 +686,7 @@ export function GroupDetailPage() {
 
           <section className="rounded-lg border border-rose-300/30 bg-rose-300/10 p-5">
             <h2 className="text-xl font-black text-white">Danger zone</h2>
+
             {isOwner ? (
               <button
                 type="button"
@@ -671,10 +729,14 @@ function getConfirmTitle(action) {
 }
 
 function getConfirmDescription(action) {
-  if (action.type === "remove")
+  if (action.type === "remove") {
     return `${action.member.profile.username} will no longer appear in this group leaderboard.`;
-  if (action.type === "leave")
+  }
+
+  if (action.type === "leave") {
     return "You will lose access to this private group unless someone invites you again.";
+  }
+
   return "This permanently deletes the group, memberships, and pending invitations.";
 }
 
@@ -697,5 +759,5 @@ function formatPredictionResult(prediction, match) {
     return "Draw";
   }
 
-  return "Unknown";
+  return "No prediction yet";
 }
