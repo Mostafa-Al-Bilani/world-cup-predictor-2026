@@ -28,7 +28,7 @@ const teamFlagCodes = {
   "Democratic Republic of the Congo": "cd",
   Ecuador: "ec",
   Egypt: "eg",
-  England: "gb",
+  England: "gb-eng",
   France: "fr",
   Germany: "de",
   Ghana: "gh",
@@ -66,7 +66,7 @@ const teamFlagCodes = {
   Romania: "ro",
   Russia: "ru",
   "Saudi Arabia": "sa",
-  Scotland: "gb",
+  Scotland: "gb-sct",
   Senegal: "sn",
   Serbia: "rs",
   Slovakia: "sk",
@@ -84,61 +84,40 @@ const teamFlagCodes = {
   "United States": "us",
   Uzbekistan: "uz",
   Venezuela: "ve",
-  Wales: "gb",
-};
-
-const simpleFlagCodes = {
-  ...teamFlagCodes,
-  England: "gb-eng",
-  Scotland: "gb-sct",
   Wales: "gb-wls",
 };
 
-const normalizedPremiumFlagCodes = Object.fromEntries(
+const normalizedTeamFlagCodes = Object.fromEntries(
   Object.entries(teamFlagCodes).map(([team, code]) => [
     normalizeTeamName(team),
     code,
   ]),
 );
 
-const normalizedSimpleFlagCodes = Object.fromEntries(
-  Object.entries(simpleFlagCodes).map(([team, code]) => [
-    normalizeTeamName(team),
-    code,
-  ]),
-);
-
 const simpleSizeStyles = {
-  sm: {
-    wrapper: "h-6 w-8 rounded-md",
-    flag: "h-4 w-6",
-  },
-  md: {
-    wrapper: "h-9 w-12 rounded-lg",
-    flag: "h-6 w-9",
-  },
-  lg: {
-    wrapper: "h-11 w-14 rounded-xl",
-    flag: "h-7 w-11",
-  },
-  xl: {
-    wrapper: "h-12 w-16 rounded-xl",
-    flag: "h-8 w-12",
-  },
+  sm: "text-[1.35rem]",
+  md: "text-[1.75rem]",
+  lg: "text-[2.05rem]",
+  xl: "text-[2.35rem]",
 };
 
 const premiumSizeStyles = {
-  sm: "h-10 w-12 rounded-xl",
-  md: "h-14 w-16 rounded-2xl",
-  lg: "h-16 w-20 rounded-2xl",
-  xl: "h-[5.6rem] w-[6.8rem] rounded-3xl",
-};
-
-const flagsApiSizeByComponentSize = {
-  sm: 64,
-  md: 64,
-  lg: 64,
-  xl: 64,
+  sm: {
+    wrapper: "h-10 w-14 rounded-2xl",
+    flag: "text-[2.1rem]",
+  },
+  md: {
+    wrapper: "h-14 w-[4.5rem] rounded-2xl",
+    flag: "text-[2.8rem]",
+  },
+  lg: {
+    wrapper: "h-16 w-[5.2rem] rounded-3xl",
+    flag: "text-[3.3rem]",
+  },
+  xl: {
+    wrapper: "h-[5.25rem] w-[7rem] rounded-3xl",
+    flag: "text-[4.35rem]",
+  },
 };
 
 export function TeamFlag({
@@ -147,9 +126,9 @@ export function TeamFlag({
   className,
   variant = "simple",
 }) {
-  if (variant === "premium") {
-    const flagCode = getPremiumFlagCode(teamName);
+  const flagCode = getFlagCode(teamName);
 
+  if (variant === "premium") {
     return (
       <PremiumFlag
         teamName={teamName}
@@ -159,8 +138,6 @@ export function TeamFlag({
       />
     );
   }
-
-  const flagCode = getSimpleFlagCode(teamName);
 
   return (
     <SimpleFlag
@@ -173,28 +150,65 @@ export function TeamFlag({
 }
 
 function SimpleFlag({ teamName, flagCode, size, className }) {
-  const styles = simpleSizeStyles[size] ?? simpleSizeStyles.md;
+  if (!flagCode) {
+    return (
+      <span
+        className={clsx(
+          "inline-flex h-7 min-w-8 shrink-0 items-center justify-center text-xs font-black uppercase tracking-widest text-slate-300",
+          className,
+        )}
+        title={teamName}
+        aria-label={`${teamName} flag`}
+      >
+        {getFallbackCode(teamName)}
+      </span>
+    );
+  }
 
   return (
     <span
       className={clsx(
-        "inline-flex shrink-0 items-center justify-center overflow-hidden border border-white/10 bg-slate-950",
+        "fi shrink-0 rounded-[0.15rem] bg-center bg-contain bg-no-repeat",
+        "shadow-[0_2px_8px_rgba(0,0,0,0.25)]",
+        `fi-${flagCode}`,
+        simpleSizeStyles[size] ?? simpleSizeStyles.md,
+        className,
+      )}
+      title={teamName}
+      aria-label={`${teamName} flag`}
+    />
+  );
+}
+
+function PremiumFlag({ teamName, flagCode, size, className }) {
+  const styles = premiumSizeStyles[size] ?? premiumSizeStyles.md;
+
+  return (
+    <span
+      className={clsx(
+        "relative inline-flex shrink-0 items-center justify-center overflow-hidden border border-white/12 bg-[#050b1c]",
+        "shadow-[inset_0_1px_0_rgba(255,255,255,0.16),0_18px_45px_rgba(0,0,0,0.52)]",
+        "before:absolute before:inset-0 before:bg-[radial-gradient(circle_at_50%_0%,rgba(255,255,255,0.18),transparent_38%)]",
+        "after:absolute after:inset-x-5 after:bottom-2 after:h-3 after:rounded-full after:bg-emerald-300/10 after:blur-md",
         styles.wrapper,
         className,
       )}
       title={teamName}
       aria-label={`${teamName} flag`}
     >
+      <span className="absolute inset-0 bg-[linear-gradient(145deg,rgba(255,255,255,0.08),transparent_40%,rgba(0,0,0,0.38))]" />
+
       {flagCode ? (
         <span
           className={clsx(
-            "fi block bg-center bg-contain bg-no-repeat shadow-[0_2px_8px_rgba(0,0,0,0.25)]",
+            "fi relative z-10 rounded-lg bg-center bg-contain bg-no-repeat",
+            "shadow-[0_8px_24px_rgba(0,0,0,0.55)] ring-1 ring-white/10",
             `fi-${flagCode}`,
             styles.flag,
           )}
         />
       ) : (
-        <span className="text-xs font-black uppercase tracking-widest text-slate-300">
+        <span className="relative z-10 text-sm font-black uppercase tracking-widest text-slate-200">
           {getFallbackCode(teamName)}
         </span>
       )}
@@ -202,62 +216,9 @@ function SimpleFlag({ teamName, flagCode, size, className }) {
   );
 }
 
-function PremiumFlag({ teamName, flagCode, size, className }) {
-  const styles = premiumSizeStyles[size] ?? premiumSizeStyles.md;
-  const apiSize = flagsApiSizeByComponentSize[size] ?? 64;
-  const imageUrl = flagCode
-    ? `https://flagsapi.com/${flagCode.toUpperCase()}/shiny/${apiSize}.png`
-    : "";
-
-  return (
-    <span
-      className={clsx(
-        "relative inline-flex shrink-0 items-center justify-center overflow-hidden border border-white/15 bg-slate-950/95",
-        "shadow-[inset_0_1px_0_rgba(255,255,255,0.18),0_18px_42px_rgba(0,0,0,0.5)]",
-        premiumSizeStyles[size] ?? premiumSizeStyles.md,
-        className,
-      )}
-      title={teamName}
-      aria-label={`${teamName} flag`}
-    >
-      <span className="absolute inset-0 bg-[radial-gradient(circle_at_50%_0%,rgba(255,255,255,0.22),transparent_38%),linear-gradient(145deg,rgba(255,255,255,0.08),transparent_45%,rgba(0,0,0,0.35))]" />
-
-      {imageUrl ? (
-        <img
-          src={imageUrl}
-          alt=""
-          loading="lazy"
-          className={clsx(
-            "relative z-10 object-contain drop-shadow-[0_8px_14px_rgba(0,0,0,0.55)]",
-            size === "xl" ? "h-[4.25rem] w-[5.45rem]" : "h-[70%] w-[82%]",
-          )}
-          onError={(event) => {
-            event.currentTarget.style.display = "none";
-            event.currentTarget.nextElementSibling?.classList.remove("hidden");
-          }}
-        />
-      ) : null}
-
-      <span
-        className={clsx(
-          "relative z-10 text-sm font-black uppercase tracking-widest text-slate-200",
-          imageUrl && "hidden",
-        )}
-      >
-        {getFallbackCode(teamName)}
-      </span>
-    </span>
-  );
-}
-
-function getPremiumFlagCode(teamName) {
+function getFlagCode(teamName) {
   const normalized = normalizeTeamName(teamName);
-  return normalizedPremiumFlagCodes[normalized] ?? "";
-}
-
-function getSimpleFlagCode(teamName) {
-  const normalized = normalizeTeamName(teamName);
-  return normalizedSimpleFlagCodes[normalized] ?? "";
+  return normalizedTeamFlagCodes[normalized] ?? "";
 }
 
 function normalizeTeamName(value) {
