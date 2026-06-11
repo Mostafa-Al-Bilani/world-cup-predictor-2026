@@ -1,4 +1,4 @@
-import { Menu, ShieldCheck, Trophy, X } from "lucide-react";
+import { Menu, ShieldCheck, Trophy, UserRound, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { Link, NavLink } from "react-router-dom";
 import clsx from "clsx";
@@ -43,6 +43,8 @@ export function Navbar() {
   const [missingPredictionCount, setMissingPredictionCount] = useState(0);
 
   const { user, isAuthenticated, isAdmin, profile, signOut } = useAuth();
+
+  const username = profile?.username ?? user?.email?.split("@")[0] ?? "Player";
 
   const visibleNavItems = useMemo(
     () =>
@@ -132,21 +134,35 @@ export function Navbar() {
 
   return (
     <header className="sticky top-0 z-40 border-b border-white/10 bg-slate-950/82 backdrop-blur-xl">
-      <nav className="mx-auto flex w-full max-w-7xl items-center justify-between py-4 pl-4 pr-8 sm:px-6 lg:px-8">
+      <nav className="mx-auto flex w-full max-w-7xl items-center justify-between gap-3 px-4 py-4 sm:px-6 lg:px-8">
         <Link to="/" className="flex min-w-0 flex-1 items-center gap-3 lg:flex-none">
-          <span className="grid h-10 w-10 place-items-center rounded-lg border border-gold-300/40 bg-gold-300/15 text-gold-300 shadow-gold">
+          <span className="grid h-10 w-10 shrink-0 place-items-center rounded-lg border border-gold-300/40 bg-gold-300/15 text-gold-300 shadow-gold">
             <Trophy size={20} />
           </span>
 
           <span className="min-w-0">
-            <span className="block text-sm font-black uppercase tracking-[0.22em] text-white">
+            <span className="block truncate text-sm font-black uppercase tracking-[0.22em] text-white">
               CupPredict
             </span>
-            <span className="block text-xs text-emerald-200">
+            <span className="block truncate text-xs text-emerald-200">
               2026 Tournament League
             </span>
           </span>
         </Link>
+
+        {isAuthenticated ? (
+          <div className="flex max-w-[128px] shrink-0 items-center gap-2 rounded-full border border-emerald-300/25 bg-emerald-300/10 px-3 py-2 lg:hidden">
+            <UserRound size={15} className="shrink-0 text-emerald-300" />
+            <span className="min-w-0">
+              <span className="block truncate text-xs font-black text-white">
+                {username}
+              </span>
+              <span className="block text-[10px] font-bold uppercase tracking-wide text-emerald-200">
+                Signed in
+              </span>
+            </span>
+          </div>
+        ) : null}
 
         <div className="hidden items-center gap-1 lg:flex">
           {visibleNavItems.map((item) => (
@@ -166,7 +182,7 @@ export function Navbar() {
           {isAuthenticated ? (
             <>
               <span className="max-w-40 truncate rounded-full border border-white/10 px-3 py-2 text-sm text-slate-300">
-                {profile?.username ?? "Player"}
+                {username}
               </span>
 
               <button
@@ -200,7 +216,7 @@ export function Navbar() {
 
         <button
           type="button"
-          className="ml-3 grid h-10 w-10 shrink-0 place-items-center rounded-lg border border-white/20 bg-white/5 text-white lg:hidden"
+          className="grid h-10 w-10 shrink-0 place-items-center rounded-lg border border-white/20 bg-white/5 text-white lg:hidden"
           onClick={() => setOpen((value) => !value)}
           aria-label="Toggle navigation"
         >
@@ -210,6 +226,17 @@ export function Navbar() {
 
       {open ? (
         <div className="border-t border-white/10 bg-slate-950 px-4 py-4 lg:hidden">
+          {isAuthenticated ? (
+            <div className="mb-3 rounded-lg border border-emerald-300/25 bg-emerald-300/10 p-3">
+              <p className="text-xs font-black uppercase tracking-[0.2em] text-emerald-200">
+                Signed in as
+              </p>
+              <p className="mt-1 truncate text-lg font-black text-white">
+                {username}
+              </p>
+            </div>
+          ) : null}
+
           <div className="flex flex-col gap-2">
             {visibleNavItems.map((item) => (
               <NavLink

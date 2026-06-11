@@ -27,17 +27,20 @@ const features = [
   },
   {
     title: "Earn points",
-    description: "Get points for correct winners, exact scores, bracket picks, and champion prediction.",
+    description:
+      "Get points for correct winners, exact scores, bracket picks, and champion prediction.",
     icon: Medal,
   },
   {
     title: "Climb the scoreboard",
-    description: "Track your total points, accuracy, and rank during the tournament.",
+    description:
+      "Track your total points, accuracy, and rank during the tournament.",
     icon: Trophy,
   },
   {
     title: "Compete with friends",
-    description: "Create groups and compare your score against people you know.",
+    description:
+      "Create groups and compare your score against people you know.",
     icon: Users,
   },
 ];
@@ -95,8 +98,7 @@ export function HomePage() {
   const remaining = nextMatch ? getTimeRemaining(nextMatch.match_date) : null;
 
   const missingPredictions = useMemo(
-    () =>
-      upcomingMatches.filter((match) => !predictionByMatch.has(match.id)),
+    () => upcomingMatches.filter((match) => !predictionByMatch.has(match.id)),
     [predictionByMatch, upcomingMatches],
   );
 
@@ -171,12 +173,16 @@ function DashboardHome({
           </p>
 
           <h1 className="mt-3 text-4xl font-black sm:text-5xl">
-            Welcome back{profile?.display_name ? `, ${profile.display_name}` : ""}.
+            Welcome back
+            {profile?.username || profile?.display_name
+              ? `, ${profile.username ?? profile.display_name}`
+              : ""}
+            .
           </h1>
 
           <p className="mt-3 max-w-2xl text-slate-300">
-            Track your score, finish missing predictions, and follow the next
-            World Cup match from one place.
+            You are signed in. Track your score, finish missing predictions, and
+            follow the next World Cup match from one place.
           </p>
         </div>
 
@@ -284,7 +290,9 @@ function DashboardHome({
 
           <DashboardPanel
             title="Champion pick"
-            actionLabel={championPrediction ? "View predictions" : "Pick champion"}
+            actionLabel={
+              championPrediction ? "View predictions" : "Pick champion"
+            }
             actionTo={championPrediction ? "/my-predictions" : "/champion-pick"}
           >
             <div className="rounded-lg border border-white/10 bg-white/[0.04] p-4">

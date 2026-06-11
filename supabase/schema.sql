@@ -39,7 +39,7 @@ create table if not exists public.matches (
   provider_fixture_id text,
   last_synced_at timestamptz,
   created_at timestamptz not null default now(),
-  constraint matches_status_check check (status in ('upcoming', 'live', 'halftime', 'finished', 'postponed', 'cancelled')),
+  constraint matches_status_check check (status in ('upcoming', 'live', 'halftime', 'extra_time', 'penalties', 'penalty_shootout', 'finished', 'postponed', 'cancelled')),
   constraint matches_result_check check (result is null or result in ('team_a', 'draw', 'team_b')),
   constraint matches_scores_non_negative check (
     (team_a_score is null or team_a_score >= 0) and
@@ -92,7 +92,7 @@ alter table public.profiles add column if not exists champion_points integer not
 alter table public.profiles add column if not exists bracket_points integer not null default 0;
 alter table public.matches drop constraint if exists matches_status_check;
 alter table public.matches add constraint matches_status_check
-check (status in ('upcoming', 'live', 'halftime', 'finished', 'postponed', 'cancelled'));
+check (status in ('upcoming', 'live', 'halftime', 'extra_time', 'penalties', 'penalty_shootout', 'finished', 'postponed', 'cancelled'));
 alter table public.predictions add column if not exists predicted_home_score integer;
 alter table public.predictions add column if not exists predicted_away_score integer;
 alter table public.predictions add column if not exists winner_points integer not null default 0;
@@ -638,14 +638,21 @@ declare
   starts_at timestamptz;
   current_status text;
   current_stage text;
+  current_team_a text;
+  current_team_b text;
 begin
-  select match_date, status, stage
-  into starts_at, current_status, current_stage
+  select match_date, status, stage, team_a, team_b
+  into starts_at, current_status, current_stage, current_team_a, current_team_b
   from public.matches
   where id = new.match_id;
 
   if starts_at is null then
     raise exception 'Match not found.';
+  end if;
+
+  if public.is_placeholder_team_name(current_team_a)
+     or public.is_placeholder_team_name(current_team_b) then
+    raise exception 'Predictions open when both real teams are known.';
   end if;
 
   if starts_at <= now() then
@@ -685,6 +692,59 @@ create trigger predictions_require_scores_trigger
 before insert or update on public.predictions
 for each row
 execute function public.prevent_incomplete_score_predictions();
+
+create or replace function public.prevent_inconsistent_prediction_score()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  current_stage text;
+begin
+  select stage
+  into current_stage
+  from public.matches
+  where id = new.match_id;
+
+  if current_stage is null then
+    raise exception 'Match not found.';
+  end if;
+
+  if new.predicted_home_score is null or new.predicted_away_score is null then
+    raise exception 'Enter both scores before saving your prediction.';
+  end if;
+
+  if new.predicted_home_score > new.predicted_away_score
+     and new.predicted_result <> 'team_a' then
+    raise exception 'Prediction result must match the predicted score.';
+  end if;
+
+  if new.predicted_home_score < new.predicted_away_score
+     and new.predicted_result <> 'team_b' then
+    raise exception 'Prediction result must match the predicted score.';
+  end if;
+
+  if new.predicted_home_score = new.predicted_away_score
+     and new.predicted_result <> 'draw' then
+    raise exception 'Prediction result must match the predicted score.';
+  end if;
+
+  if new.predicted_result = 'draw' and not public.match_allows_draw(current_stage) then
+    raise exception 'Draw predictions are only allowed for group-stage matches.';
+  end if;
+
+  return new;
+end;
+$$;
+
+drop trigger if exists predictions_prevent_inconsistent_score on public.predictions;
+
+create trigger predictions_prevent_inconsistent_score
+before insert or update of predicted_result, predicted_home_score, predicted_away_score
+on public.predictions
+for each row
+execute function public.prevent_inconsistent_prediction_score();
 
 drop trigger if exists predictions_prevent_locked_insert on public.predictions;
 create trigger predictions_prevent_locked_insert
@@ -1684,6 +1744,8 @@ with check (
     where matches.id = match_id
       and matches.status = 'upcoming'
       and matches.match_date > now()
+      and not public.is_placeholder_team_name(matches.team_a)
+      and not public.is_placeholder_team_name(matches.team_b)
   )
 );
 
@@ -1697,6 +1759,8 @@ using (
     where matches.id = match_id
       and matches.status = 'upcoming'
       and matches.match_date > now()
+      and not public.is_placeholder_team_name(matches.team_a)
+      and not public.is_placeholder_team_name(matches.team_b)
   )
 )
 with check (user_id = auth.uid());
@@ -1865,6 +1929,8 @@ revoke insert, update, delete on public.group_invitations from authenticated;
 revoke insert, update, delete on public.world_cup_winner_predictions from authenticated;
 revoke insert, update, delete on public.stage_predictions from authenticated;
 
+revoke execute on function public.prevent_inconsistent_prediction_score() from PUBLIC;
+revoke execute on function public.prevent_inconsistent_prediction_score() from authenticated;
 revoke execute on function public.recalculate_match_points(uuid) from PUBLIC;
 revoke execute on function public.recalculate_match_points(uuid) from authenticated;
 revoke execute on function public.recalculate_profile_totals(uuid) from PUBLIC;
