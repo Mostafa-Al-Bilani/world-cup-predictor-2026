@@ -107,10 +107,7 @@ export function GroupDetailPage() {
       setLivePredictions(rows);
     } catch (error) {
       toast.error(
-        getSafeErrorMessage(
-          error,
-          "Could not load group match predictions.",
-        ),
+        getSafeErrorMessage(error, "Could not load group match predictions."),
       );
     } finally {
       setLivePredictionsLoading(false);
@@ -708,6 +705,15 @@ function GroupPredictionMatchCard({ match, predictions }) {
 
         <div className="mt-5 rounded-lg border border-white/10 bg-white/5 px-4 py-3 text-center text-2xl font-black text-white">
           {match.team_a_score ?? "-"} : {match.team_b_score ?? "-"}
+          {match.elapsed !== null && match.elapsed !== undefined ? (
+            <span className="ml-2 align-middle text-xs font-bold text-emerald-200">
+              {match.elapsed} min
+            </span>
+          ) : match.status_detail ? (
+            <span className="ml-2 align-middle text-xs font-bold text-emerald-200">
+              {match.status_detail}
+            </span>
+          ) : null}
         </div>
 
         <div className="mt-5 grid gap-3 text-sm text-slate-300 sm:grid-cols-2">
