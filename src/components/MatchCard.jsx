@@ -20,7 +20,27 @@ import {
   matchAllowsDraw,
 } from "../utils/predictions";
 
+function isPlaceholderTeamName(teamName) {
+  const text = String(teamName ?? "").trim().toLowerCase();
+
+  return (
+    !text ||
+    text === "tbd" ||
+    text.includes("group ") ||
+    text.includes("winner") ||
+    text.includes("runner-up") ||
+    text.includes("runner up") ||
+    text.includes("2nd place") ||
+    text.includes("3rd place") ||
+    text.includes("third place")
+  );
+}
+
 function getPredictionLockMessage({ match, normalizedStatus }) {
+  if (isPlaceholderTeamName(match.team_a) || isPlaceholderTeamName(match.team_b)) {
+    return "Prediction opens when both real teams are known.";
+  }
+
   if (normalizedStatus === "finished") {
     return "Prediction closed — this match is finished.";
   }
@@ -156,7 +176,13 @@ export function MatchCard({
   busy,
 }) {
   const normalizedStatus = normalizeMatchDisplayStatus(match.status);
-  const locked = isMatchLocked(match) || normalizedStatus !== "upcoming";
+
+  const hasPlaceholderTeams =
+    isPlaceholderTeamName(match.team_a) || isPlaceholderTeamName(match.team_b);
+
+  const locked =
+    hasPlaceholderTeams || isMatchLocked(match) || normalizedStatus !== "upcoming";
+
   const lockMessage = getPredictionLockMessage({ match, normalizedStatus });
   const canDraw = matchAllowsDraw(match);
   const predictionStatus = getPredictionStatus(match, prediction);
@@ -189,6 +215,7 @@ export function MatchCard({
     draft.awayScore !== undefined;
 
   const scoreConsistencyError = getScoreConsistencyError({ draft, canDraw });
+
   const canSave =
     !locked &&
     !busy &&
@@ -256,6 +283,7 @@ export function MatchCard({
         {shouldShowScoreBox(match) ? (
           <div className="mt-5 rounded-lg border border-white/10 bg-white/5 px-4 py-3 text-center text-2xl font-black">
             {match.team_a_score ?? "-"} : {match.team_b_score ?? "-"}
+
             {livePhaseLabel ? (
               <span
                 className={`ml-2 align-middle text-xs font-bold ${getLivePhaseClassName(

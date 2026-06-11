@@ -9,7 +9,6 @@ const teamFlagCodes = {
   Belgium: "be",
   Bolivia: "bo",
   "Bosnia and Herzegovina": "ba",
-  "Bosnia and Her...": "ba",
   Brazil: "br",
   Bulgaria: "bg",
   Cameroon: "cm",
@@ -25,9 +24,11 @@ const teamFlagCodes = {
   Czechia: "cz",
   "Czech Republic": "cz",
   Denmark: "dk",
+  "DR Congo": "cd",
+  "Democratic Republic of the Congo": "cd",
   Ecuador: "ec",
   Egypt: "eg",
-  England: "gb-eng",
+  England: "gb",
   France: "fr",
   Germany: "de",
   Ghana: "gh",
@@ -40,6 +41,9 @@ const teamFlagCodes = {
   Iraq: "iq",
   Ireland: "ie",
   Italy: "it",
+  "Ivory Coast": "ci",
+  "Côte d'Ivoire": "ci",
+  "Cote d'Ivoire": "ci",
   Jamaica: "jm",
   Japan: "jp",
   Jordan: "jo",
@@ -62,7 +66,7 @@ const teamFlagCodes = {
   Romania: "ro",
   Russia: "ru",
   "Saudi Arabia": "sa",
-  Scotland: "gb-sct",
+  Scotland: "gb",
   Senegal: "sn",
   Serbia: "rs",
   Slovakia: "sk",
@@ -80,40 +84,61 @@ const teamFlagCodes = {
   "United States": "us",
   Uzbekistan: "uz",
   Venezuela: "ve",
+  Wales: "gb",
+};
+
+const simpleFlagCodes = {
+  ...teamFlagCodes,
+  England: "gb-eng",
+  Scotland: "gb-sct",
   Wales: "gb-wls",
 };
 
-const normalizedTeamFlagCodes = Object.fromEntries(
+const normalizedPremiumFlagCodes = Object.fromEntries(
   Object.entries(teamFlagCodes).map(([team, code]) => [
     normalizeTeamName(team),
     code,
   ]),
 );
 
+const normalizedSimpleFlagCodes = Object.fromEntries(
+  Object.entries(simpleFlagCodes).map(([team, code]) => [
+    normalizeTeamName(team),
+    code,
+  ]),
+);
+
 const simpleSizeStyles = {
-  sm: "text-[1.15rem]",
-  md: "text-[1.55rem]",
-  lg: "text-[1.85rem]",
-  xl: "text-[2.2rem]",
+  sm: {
+    wrapper: "h-6 w-8 rounded-md",
+    flag: "h-4 w-6",
+  },
+  md: {
+    wrapper: "h-9 w-12 rounded-lg",
+    flag: "h-6 w-9",
+  },
+  lg: {
+    wrapper: "h-11 w-14 rounded-xl",
+    flag: "h-7 w-11",
+  },
+  xl: {
+    wrapper: "h-12 w-16 rounded-xl",
+    flag: "h-8 w-12",
+  },
 };
 
 const premiumSizeStyles = {
-  sm: {
-    wrapper: "h-8 w-10 rounded-xl",
-    flag: "text-[1.45rem]",
-  },
-  md: {
-    wrapper: "h-11 w-14 rounded-2xl",
-    flag: "text-[1.95rem]",
-  },
-  lg: {
-    wrapper: "h-14 w-[4.5rem] rounded-2xl",
-    flag: "text-[2.55rem]",
-  },
-  xl: {
-    wrapper: "h-[4.6rem] w-[6.3rem] rounded-3xl",
-    flag: "text-[3.35rem]",
-  },
+  sm: "h-10 w-12 rounded-xl",
+  md: "h-14 w-16 rounded-2xl",
+  lg: "h-16 w-20 rounded-2xl",
+  xl: "h-[5.6rem] w-[6.8rem] rounded-3xl",
+};
+
+const flagsApiSizeByComponentSize = {
+  sm: 64,
+  md: 64,
+  lg: 64,
+  xl: 64,
 };
 
 export function TeamFlag({
@@ -122,9 +147,9 @@ export function TeamFlag({
   className,
   variant = "simple",
 }) {
-  const flagCode = getFlagCode(teamName);
-
   if (variant === "premium") {
+    const flagCode = getPremiumFlagCode(teamName);
+
     return (
       <PremiumFlag
         teamName={teamName}
@@ -134,6 +159,8 @@ export function TeamFlag({
       />
     );
   }
+
+  const flagCode = getSimpleFlagCode(teamName);
 
   return (
     <SimpleFlag
@@ -146,69 +173,28 @@ export function TeamFlag({
 }
 
 function SimpleFlag({ teamName, flagCode, size, className }) {
-  if (!flagCode) {
-    return (
-      <span
-        className={clsx(
-          "inline-flex h-8 w-10 shrink-0 items-center justify-center rounded-lg border border-white/10 bg-slate-950 text-xs font-black text-slate-300",
-          className,
-        )}
-        title={teamName}
-        aria-label={`${teamName} flag`}
-      >
-        {getFallbackCode(teamName)}
-      </span>
-    );
-  }
+  const styles = simpleSizeStyles[size] ?? simpleSizeStyles.md;
 
   return (
     <span
       className={clsx(
-        "inline-flex shrink-0 items-center justify-center overflow-hidden rounded-md border border-white/10 bg-slate-950",
-        className,
-      )}
-      title={teamName}
-      aria-label={`${teamName} flag`}
-    >
-      <span
-        className={clsx(
-          "fi rounded-[0.15rem] shadow-[0_2px_8px_rgba(0,0,0,0.25)]",
-          `fi-${flagCode}`,
-          simpleSizeStyles[size] ?? simpleSizeStyles.md,
-        )}
-      />
-    </span>
-  );
-}
-
-function PremiumFlag({ teamName, flagCode, size, className }) {
-  const styles = premiumSizeStyles[size] ?? premiumSizeStyles.md;
-
-  return (
-    <span
-      className={clsx(
-        "relative inline-flex shrink-0 items-center justify-center overflow-hidden border border-white/15 bg-slate-950/90",
-        "shadow-[inset_0_1px_0_rgba(255,255,255,0.16),0_18px_38px_rgba(0,0,0,0.42)]",
-        "before:absolute before:inset-0 before:bg-[radial-gradient(circle_at_50%_8%,rgba(255,255,255,0.18),transparent_44%)]",
-        "after:absolute after:inset-x-4 after:bottom-1 after:h-3 after:rounded-full after:bg-emerald-300/10 after:blur-md",
+        "inline-flex shrink-0 items-center justify-center overflow-hidden border border-white/10 bg-slate-950",
         styles.wrapper,
         className,
       )}
       title={teamName}
       aria-label={`${teamName} flag`}
     >
-      <span className="absolute inset-0 bg-[linear-gradient(145deg,rgba(255,255,255,0.08),transparent_42%,rgba(0,0,0,0.24))]" />
-
       {flagCode ? (
         <span
           className={clsx(
-            "fi relative z-10 rounded-md shadow-[0_4px_18px_rgba(0,0,0,0.45)]",
+            "fi block bg-center bg-contain bg-no-repeat shadow-[0_2px_8px_rgba(0,0,0,0.25)]",
             `fi-${flagCode}`,
             styles.flag,
           )}
         />
       ) : (
-        <span className="relative z-10 text-sm font-black uppercase tracking-widest text-slate-200">
+        <span className="text-xs font-black uppercase tracking-widest text-slate-300">
           {getFallbackCode(teamName)}
         </span>
       )}
@@ -216,15 +202,70 @@ function PremiumFlag({ teamName, flagCode, size, className }) {
   );
 }
 
-function getFlagCode(teamName) {
+function PremiumFlag({ teamName, flagCode, size, className }) {
+  const styles = premiumSizeStyles[size] ?? premiumSizeStyles.md;
+  const apiSize = flagsApiSizeByComponentSize[size] ?? 64;
+  const imageUrl = flagCode
+    ? `https://flagsapi.com/${flagCode.toUpperCase()}/shiny/${apiSize}.png`
+    : "";
+
+  return (
+    <span
+      className={clsx(
+        "relative inline-flex shrink-0 items-center justify-center overflow-hidden border border-white/15 bg-slate-950/95",
+        "shadow-[inset_0_1px_0_rgba(255,255,255,0.18),0_18px_42px_rgba(0,0,0,0.5)]",
+        premiumSizeStyles[size] ?? premiumSizeStyles.md,
+        className,
+      )}
+      title={teamName}
+      aria-label={`${teamName} flag`}
+    >
+      <span className="absolute inset-0 bg-[radial-gradient(circle_at_50%_0%,rgba(255,255,255,0.22),transparent_38%),linear-gradient(145deg,rgba(255,255,255,0.08),transparent_45%,rgba(0,0,0,0.35))]" />
+
+      {imageUrl ? (
+        <img
+          src={imageUrl}
+          alt=""
+          loading="lazy"
+          className={clsx(
+            "relative z-10 object-contain drop-shadow-[0_8px_14px_rgba(0,0,0,0.55)]",
+            size === "xl" ? "h-[4.25rem] w-[5.45rem]" : "h-[70%] w-[82%]",
+          )}
+          onError={(event) => {
+            event.currentTarget.style.display = "none";
+            event.currentTarget.nextElementSibling?.classList.remove("hidden");
+          }}
+        />
+      ) : null}
+
+      <span
+        className={clsx(
+          "relative z-10 text-sm font-black uppercase tracking-widest text-slate-200",
+          imageUrl && "hidden",
+        )}
+      >
+        {getFallbackCode(teamName)}
+      </span>
+    </span>
+  );
+}
+
+function getPremiumFlagCode(teamName) {
   const normalized = normalizeTeamName(teamName);
-  return normalizedTeamFlagCodes[normalized] ?? "";
+  return normalizedPremiumFlagCodes[normalized] ?? "";
+}
+
+function getSimpleFlagCode(teamName) {
+  const normalized = normalizeTeamName(teamName);
+  return normalizedSimpleFlagCodes[normalized] ?? "";
 }
 
 function normalizeTeamName(value) {
   return String(value ?? "")
     .trim()
     .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
     .replace(/\.+/g, "")
     .replace(/&/g, "and")
     .replace(/\s+/g, " ");
