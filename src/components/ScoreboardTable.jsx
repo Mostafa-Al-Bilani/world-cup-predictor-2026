@@ -17,7 +17,7 @@ export function ScoreboardTable({ users, currentUserId }) {
               <th className="px-5 py-4">Champion</th>
               <th className="px-5 py-4">Bracket</th>
               <th className="px-5 py-4">Correct</th>
-              <th className="px-5 py-4">Total</th>
+              <th className="px-5 py-4">Finished picks</th>
               <th className="px-5 py-4">Accuracy</th>
             </tr>
           </thead>
