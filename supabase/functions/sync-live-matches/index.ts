@@ -194,8 +194,9 @@ Deno.serve(async (req) => {
         unchangedCount += 1;
       }
 
-      if (payload.status === "finished" && match.status !== "finished") {
+      if (payload.status === "finished") {
         const recalculated = await recalculateMatchPoints(match.id);
+
         if (recalculated) {
           recalculatedCount += 1;
         }

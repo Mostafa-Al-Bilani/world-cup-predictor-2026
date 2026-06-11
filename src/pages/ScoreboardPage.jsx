@@ -19,8 +19,11 @@ import { getAccuracy } from "../utils/predictions";
 
 const scoreboardSortOptions = [
   { value: "total_points", label: "Total points" },
+  { value: "match_winner_points", label: "Winner points" },
+  { value: "exact_score_points", label: "Exact score points" },
+  { value: "champion_points", label: "Champion points" },
   { value: "bracket_points", label: "Bracket points" },
-  { value: "correct_predictions", label: "Correct predictions" },
+  { value: "correct_predictions", label: "Correct finished picks" },
   { value: "accuracy", label: "Accuracy percentage" },
 ];
 
@@ -121,6 +124,17 @@ export function ScoreboardPage() {
           return (b.total_points ?? 0) - (a.total_points ?? 0);
         }
 
+        if (
+          (b.match_winner_points ?? 0) !==
+          (a.match_winner_points ?? 0)
+        ) {
+          return (b.match_winner_points ?? 0) - (a.match_winner_points ?? 0);
+        }
+
+        if ((b.exact_score_points ?? 0) !== (a.exact_score_points ?? 0)) {
+          return (b.exact_score_points ?? 0) - (a.exact_score_points ?? 0);
+        }
+
         if ((b.correct_predictions ?? 0) !== (a.correct_predictions ?? 0)) {
           return (b.correct_predictions ?? 0) - (a.correct_predictions ?? 0);
         }
@@ -131,7 +145,13 @@ export function ScoreboardPage() {
 
   const selectedGroup = groups.find((group) => group.id === selectedGroupId);
   const hasScoredRows = hasScoredLeaderboardEntries(rankedPlayers);
-  const currentUserRank = rankedPlayers.findIndex((player) => player.id === user?.id) + 1;
+
+  const currentUserRank =
+    rankedPlayers.findIndex((player) => player.id === user?.id) + 1;
+
+  const topScore = rankedPlayers[0]?.total_points ?? 0;
+
+  const currentUserRow = rankedPlayers.find((player) => player.id === user?.id);
 
   const handleScopeChange = (event) => {
     setScope(event.target.value);
@@ -160,9 +180,9 @@ export function ScoreboardPage() {
           </h1>
 
           <p className="mt-3 max-w-2xl text-slate-300">
-            Compare total points, match points, bracket points, champion points,
-            and accuracy. Switch between the public global ranking and your
-            private group ranking.
+            Rankings are based on total points collected from match winner
+            picks, exact score bonuses, champion picks, and bracket picks.
+            Accuracy only counts predictions for matches that have finished.
           </p>
 
           {latestSync ? (
@@ -219,14 +239,58 @@ export function ScoreboardPage() {
           label={scope === "group" ? "Group players" : "Global players"}
           value={rankedPlayers.length}
         />
+
         <ScoreSummaryCard
           label="Your rank"
           value={currentUserRank > 0 ? `#${currentUserRank}` : "-"}
         />
+
+        <ScoreSummaryCard label="Top score" value={topScore} />
+
         <ScoreSummaryCard
-          label="Top score"
-          value={rankedPlayers[0]?.total_points ?? 0}
+          label="Your total points"
+          value={currentUserRow?.total_points ?? 0}
         />
+      </section>
+
+      <section className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <ScoreSummaryCard
+          label="Winner points"
+          value={currentUserRow?.match_winner_points ?? 0}
+        />
+
+        <ScoreSummaryCard
+          label="Exact score points"
+          value={currentUserRow?.exact_score_points ?? 0}
+        />
+
+        <ScoreSummaryCard
+          label="Champion points"
+          value={currentUserRow?.champion_points ?? 0}
+        />
+
+        <ScoreSummaryCard
+          label="Bracket points"
+          value={currentUserRow?.bracket_points ?? 0}
+        />
+      </section>
+
+      <section className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <ScoreSummaryCard
+          label="Correct finished picks"
+          value={currentUserRow?.correct_predictions ?? 0}
+        />
+
+        <ScoreSummaryCard
+          label="Finished picks"
+          value={currentUserRow?.total_predictions ?? 0}
+        />
+
+        <ScoreSummaryCard
+          label="Accuracy"
+          value={currentUserRow ? `${getAccuracy(currentUserRow)}%` : "0%"}
+        />
+
         <ScoreSummaryCard
           label="View"
           value={scope === "group" ? selectedGroup?.name ?? "Group" : "Global"}
