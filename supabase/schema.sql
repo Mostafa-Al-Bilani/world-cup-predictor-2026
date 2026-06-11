@@ -1977,3 +1977,851 @@ grant execute on function public.regenerate_group_invite_code(uuid) to authentic
 grant execute on function public.update_group_details(uuid, text, text) to authenticated;
 grant execute on function public.delete_private_group(uuid) to authenticated;
 
+-- =====================================================================
+-- FINAL LOCAL SCHEMA PATCHES
+-- Added after the base schema so this file can be used as a complete
+-- local schema and still override older definitions safely.
+-- =====================================================================
+
+-- ---------------------------------------------------------------------
+-- Safe public leaderboard surface.
+-- Keeps public scores available without exposing profiles.email/is_admin.
+-- ---------------------------------------------------------------------
+
+create table if not exists public.public_leaderboard_profiles (
+  id uuid primary key,
+  username text not null,
+  total_points integer not null default 0,
+  match_winner_points integer not null default 0,
+  exact_score_points integer not null default 0,
+  champion_points integer not null default 0,
+  bracket_points integer not null default 0,
+  correct_predictions integer not null default 0,
+  total_predictions integer not null default 0,
+  created_at timestamptz not null default now()
+);
+
+alter table public.public_leaderboard_profiles enable row level security;
+
+drop policy if exists "Public can read public leaderboard profiles"
+on public.public_leaderboard_profiles;
+
+create policy "Public can read public leaderboard profiles"
+on public.public_leaderboard_profiles
+for select
+using (true);
+
+insert into public.public_leaderboard_profiles (
+  id,
+  username,
+  total_points,
+  match_winner_points,
+  exact_score_points,
+  champion_points,
+  bracket_points,
+  correct_predictions,
+  total_predictions,
+  created_at
+)
+select
+  id,
+  username,
+  total_points,
+  match_winner_points,
+  exact_score_points,
+  champion_points,
+  bracket_points,
+  correct_predictions,
+  total_predictions,
+  created_at
+from public.profiles
+on conflict (id) do update set
+  username = excluded.username,
+  total_points = excluded.total_points,
+  match_winner_points = excluded.match_winner_points,
+  exact_score_points = excluded.exact_score_points,
+  champion_points = excluded.champion_points,
+  bracket_points = excluded.bracket_points,
+  correct_predictions = excluded.correct_predictions,
+  total_predictions = excluded.total_predictions,
+  created_at = excluded.created_at;
+
+create or replace function public.sync_public_leaderboard_profile()
+returns trigger
+language plpgsql
+security definer
+set search_path = public, extensions
+as $$
+begin
+  insert into public.public_leaderboard_profiles (
+    id,
+    username,
+    total_points,
+    match_winner_points,
+    exact_score_points,
+    champion_points,
+    bracket_points,
+    correct_predictions,
+    total_predictions,
+    created_at
+  )
+  values (
+    new.id,
+    new.username,
+    new.total_points,
+    new.match_winner_points,
+    new.exact_score_points,
+    new.champion_points,
+    new.bracket_points,
+    new.correct_predictions,
+    new.total_predictions,
+    new.created_at
+  )
+  on conflict (id) do update set
+    username = excluded.username,
+    total_points = excluded.total_points,
+    match_winner_points = excluded.match_winner_points,
+    exact_score_points = excluded.exact_score_points,
+    champion_points = excluded.champion_points,
+    bracket_points = excluded.bracket_points,
+    correct_predictions = excluded.correct_predictions,
+    total_predictions = excluded.total_predictions,
+    created_at = excluded.created_at;
+
+  return new;
+end;
+$$;
+
+drop trigger if exists profiles_sync_public_leaderboard_profile
+on public.profiles;
+
+create trigger profiles_sync_public_leaderboard_profile
+after insert or update of
+  username,
+  total_points,
+  match_winner_points,
+  exact_score_points,
+  champion_points,
+  bracket_points,
+  correct_predictions,
+  total_predictions
+on public.profiles
+for each row
+execute function public.sync_public_leaderboard_profile();
+
+drop view if exists public.leaderboard_profiles;
+
+create view public.leaderboard_profiles
+with (security_invoker = true)
+as
+select
+  id,
+  username,
+  total_points,
+  match_winner_points,
+  exact_score_points,
+  champion_points,
+  bracket_points,
+  correct_predictions,
+  total_predictions,
+  created_at
+from public.public_leaderboard_profiles;
+
+
+-- ---------------------------------------------------------------------
+-- Safe public latest-sync surface.
+-- Keeps last-sync UI working without exposing all sync_logs.
+-- ---------------------------------------------------------------------
+
+create table if not exists public.public_latest_successful_sync (
+  id boolean primary key default true,
+  provider text not null,
+  fallback_used boolean not null default false,
+  started_at timestamptz not null,
+  finished_at timestamptz not null,
+  inserted_count integer not null default 0,
+  updated_count integer not null default 0,
+  unchanged_count integer not null default 0,
+  recalculated_count integer not null default 0,
+  failed_count integer not null default 0,
+  created_at timestamptz not null default now(),
+  constraint public_latest_successful_sync_single_row check (id = true)
+);
+
+alter table public.public_latest_successful_sync enable row level security;
+
+drop policy if exists "Public can read latest successful sync"
+on public.public_latest_successful_sync;
+
+create policy "Public can read latest successful sync"
+on public.public_latest_successful_sync
+for select
+using (true);
+
+insert into public.public_latest_successful_sync (
+  id,
+  provider,
+  fallback_used,
+  started_at,
+  finished_at,
+  inserted_count,
+  updated_count,
+  unchanged_count,
+  recalculated_count,
+  failed_count,
+  created_at
+)
+select
+  true,
+  provider,
+  fallback_used,
+  started_at,
+  finished_at,
+  inserted_count,
+  updated_count,
+  unchanged_count,
+  recalculated_count,
+  failed_count,
+  created_at
+from public.sync_logs
+where status = 'success'
+order by finished_at desc
+limit 1
+on conflict (id) do update set
+  provider = excluded.provider,
+  fallback_used = excluded.fallback_used,
+  started_at = excluded.started_at,
+  finished_at = excluded.finished_at,
+  inserted_count = excluded.inserted_count,
+  updated_count = excluded.updated_count,
+  unchanged_count = excluded.unchanged_count,
+  recalculated_count = excluded.recalculated_count,
+  failed_count = excluded.failed_count,
+  created_at = excluded.created_at;
+
+create or replace function public.sync_public_latest_successful_sync()
+returns trigger
+language plpgsql
+security definer
+set search_path = public, extensions
+as $$
+begin
+  if new.status <> 'success' then
+    return new;
+  end if;
+
+  insert into public.public_latest_successful_sync (
+    id,
+    provider,
+    fallback_used,
+    started_at,
+    finished_at,
+    inserted_count,
+    updated_count,
+    unchanged_count,
+    recalculated_count,
+    failed_count,
+    created_at
+  )
+  values (
+    true,
+    new.provider,
+    new.fallback_used,
+    new.started_at,
+    new.finished_at,
+    new.inserted_count,
+    new.updated_count,
+    new.unchanged_count,
+    new.recalculated_count,
+    new.failed_count,
+    new.created_at
+  )
+  on conflict (id) do update set
+    provider = excluded.provider,
+    fallback_used = excluded.fallback_used,
+    started_at = excluded.started_at,
+    finished_at = excluded.finished_at,
+    inserted_count = excluded.inserted_count,
+    updated_count = excluded.updated_count,
+    unchanged_count = excluded.unchanged_count,
+    recalculated_count = excluded.recalculated_count,
+    failed_count = excluded.failed_count,
+    created_at = excluded.created_at
+  where public.public_latest_successful_sync.finished_at <= excluded.finished_at;
+
+  return new;
+end;
+$$;
+
+drop trigger if exists sync_logs_sync_public_latest_successful_sync
+on public.sync_logs;
+
+create trigger sync_logs_sync_public_latest_successful_sync
+after insert or update of status, finished_at
+on public.sync_logs
+for each row
+execute function public.sync_public_latest_successful_sync();
+
+drop view if exists public.latest_successful_sync;
+
+create view public.latest_successful_sync
+with (security_invoker = true)
+as
+select
+  provider,
+  fallback_used,
+  started_at,
+  finished_at,
+  inserted_count,
+  updated_count,
+  unchanged_count,
+  recalculated_count,
+  failed_count,
+  created_at
+from public.public_latest_successful_sync;
+
+
+-- ---------------------------------------------------------------------
+-- Bracket prediction windows.
+-- Round of 32 locks June 16, 2026 00:00 GMT+3.
+-- Later rounds open when their team pool is complete, then lock 24h later.
+-- ---------------------------------------------------------------------
+
+create table if not exists public.stage_prediction_windows (
+  stage text primary key,
+  opened_at timestamptz,
+  lock_at timestamptz,
+  updated_at timestamptz not null default now(),
+  constraint stage_prediction_windows_stage_check check (
+    stage in (
+      'round_of_32',
+      'round_of_16',
+      'quarter_finals',
+      'semi_finals',
+      'finalists'
+    )
+  )
+);
+
+alter table public.stage_prediction_windows enable row level security;
+
+drop policy if exists "Anyone can read stage prediction windows"
+on public.stage_prediction_windows;
+
+create policy "Anyone can read stage prediction windows"
+on public.stage_prediction_windows
+for select
+using (true);
+
+insert into public.stage_prediction_windows (
+  stage,
+  opened_at,
+  lock_at,
+  updated_at
+)
+values (
+  'round_of_32',
+  '2026-01-01 00:00:00+00',
+  '2026-06-16 00:00:00+03',
+  now()
+)
+on conflict (stage) do update set
+  opened_at = coalesce(public.stage_prediction_windows.opened_at, excluded.opened_at),
+  lock_at = excluded.lock_at,
+  updated_at = now();
+
+create or replace function public.stage_prediction_dependency_stage(stage_name text)
+returns text
+language sql
+stable
+security definer
+set search_path = public, extensions
+as $$
+  select case public.normalize_stage_prediction_stage(stage_name)
+    when 'round_of_32' then null
+    when 'round_of_16' then 'round_of_32'
+    when 'quarter_finals' then 'round_of_16'
+    when 'semi_finals' then 'quarter_finals'
+    when 'finalists' then 'semi_finals'
+    else null
+  end;
+$$;
+
+create or replace function public.stage_prediction_dependency_ready(stage_name text)
+returns boolean
+language plpgsql
+stable
+security definer
+set search_path = public, extensions
+as $$
+declare
+  normalized_stage text;
+  dependency_stage text;
+  required_dependency_count integer;
+  actual_dependency_count integer;
+begin
+  normalized_stage := public.normalize_stage_prediction_stage(stage_name);
+
+  if normalized_stage = 'round_of_32' then
+    return true;
+  end if;
+
+  dependency_stage := public.stage_prediction_dependency_stage(normalized_stage);
+
+  if dependency_stage is null then
+    return false;
+  end if;
+
+  required_dependency_count := public.stage_prediction_required_count(dependency_stage);
+
+  select count(distinct public.team_compare_key(team_name))
+  into actual_dependency_count
+  from (
+    select team_a as team_name
+    from public.matches
+    where public.normalize_match_prediction_stage(stage) = dependency_stage
+
+    union all
+
+    select team_b as team_name
+    from public.matches
+    where public.normalize_match_prediction_stage(stage) = dependency_stage
+  ) teams
+  where not public.is_placeholder_team_name(team_name);
+
+  return actual_dependency_count = required_dependency_count;
+end;
+$$;
+
+create or replace function public.refresh_stage_prediction_windows()
+returns void
+language plpgsql
+security definer
+set search_path = public, extensions
+as $$
+declare
+  stage_name text;
+  existing_opened_at timestamptz;
+  next_opened_at timestamptz;
+  next_lock_at timestamptz;
+  first_current_stage_kickoff timestamptz;
+begin
+  insert into public.stage_prediction_windows (
+    stage,
+    opened_at,
+    lock_at,
+    updated_at
+  )
+  values (
+    'round_of_32',
+    '2026-01-01 00:00:00+00',
+    '2026-06-16 00:00:00+03',
+    now()
+  )
+  on conflict (stage) do update set
+    opened_at = coalesce(public.stage_prediction_windows.opened_at, excluded.opened_at),
+    lock_at = excluded.lock_at,
+    updated_at = now();
+
+  foreach stage_name in array array[
+    'round_of_16',
+    'quarter_finals',
+    'semi_finals',
+    'finalists'
+  ]
+  loop
+    if public.stage_prediction_dependency_ready(stage_name) then
+      select opened_at
+      into existing_opened_at
+      from public.stage_prediction_windows
+      where stage = stage_name
+      for update;
+
+      next_opened_at := coalesce(existing_opened_at, now());
+      next_lock_at := next_opened_at + interval '1 day';
+
+      select min(match_date)
+      into first_current_stage_kickoff
+      from public.matches
+      where public.normalize_match_prediction_stage(stage) = stage_name;
+
+      if first_current_stage_kickoff is not null
+         and first_current_stage_kickoff < next_lock_at then
+        next_lock_at := first_current_stage_kickoff;
+      end if;
+
+      insert into public.stage_prediction_windows (
+        stage,
+        opened_at,
+        lock_at,
+        updated_at
+      )
+      values (
+        stage_name,
+        next_opened_at,
+        next_lock_at,
+        now()
+      )
+      on conflict (stage) do update set
+        opened_at = coalesce(public.stage_prediction_windows.opened_at, excluded.opened_at),
+        lock_at = excluded.lock_at,
+        updated_at = now();
+    else
+      insert into public.stage_prediction_windows (
+        stage,
+        opened_at,
+        lock_at,
+        updated_at
+      )
+      values (
+        stage_name,
+        null,
+        null,
+        now()
+      )
+      on conflict (stage) do nothing;
+    end if;
+  end loop;
+end;
+$$;
+
+create or replace function public.refresh_stage_prediction_windows_trigger()
+returns trigger
+language plpgsql
+security definer
+set search_path = public, extensions
+as $$
+begin
+  perform public.refresh_stage_prediction_windows();
+  return null;
+end;
+$$;
+
+drop trigger if exists matches_refresh_stage_prediction_windows
+on public.matches;
+
+create trigger matches_refresh_stage_prediction_windows
+after insert or update of team_a, team_b, status, result, last_synced_at
+on public.matches
+for each statement
+execute function public.refresh_stage_prediction_windows_trigger();
+
+create or replace function public.stage_prediction_lock_at(stage_name text)
+returns timestamptz
+language plpgsql
+volatile
+security definer
+set search_path = public, extensions
+as $$
+declare
+  normalized_stage text;
+  next_lock_at timestamptz;
+begin
+  normalized_stage := public.normalize_stage_prediction_stage(stage_name);
+
+  if normalized_stage is null or normalized_stage = '' then
+    return null;
+  end if;
+
+  perform public.refresh_stage_prediction_windows();
+
+  select lock_at
+  into next_lock_at
+  from public.stage_prediction_windows
+  where stage = normalized_stage;
+
+  return next_lock_at;
+end;
+$$;
+
+create or replace function public.save_stage_prediction(
+  target_stage text,
+  selected_teams text[]
+)
+returns public.stage_predictions
+language plpgsql
+security definer
+set search_path = public, extensions
+as $$
+declare
+  normalized_stage text;
+  required_count integer;
+  stage_lock_at timestamptz;
+  stage_opened_at timestamptz;
+  cleaned_teams text[];
+  saved_prediction public.stage_predictions;
+begin
+  if auth.uid() is null then
+    raise exception 'You must be logged in to save bracket predictions';
+  end if;
+
+  perform public.refresh_stage_prediction_windows();
+
+  normalized_stage := public.normalize_stage_prediction_stage(target_stage);
+  required_count := public.stage_prediction_required_count(normalized_stage);
+
+  if normalized_stage is null or required_count is null then
+    raise exception 'Choose a valid bracket stage';
+  end if;
+
+  select opened_at, lock_at
+  into stage_opened_at, stage_lock_at
+  from public.stage_prediction_windows
+  where stage = normalized_stage;
+
+  if stage_opened_at is null then
+    raise exception 'This bracket round opens after the previous round teams are known.';
+  end if;
+
+  if stage_lock_at is not null and stage_lock_at <= now() then
+    raise exception 'This stage is locked';
+  end if;
+
+  select array_agg(trim(selected.team_name) order by trim(selected.team_name))
+  into cleaned_teams
+  from unnest(coalesce(selected_teams, '{}')) as selected(team_name)
+  where trim(selected.team_name) <> '';
+
+  cleaned_teams := coalesce(cleaned_teams, '{}');
+
+  if cardinality(cleaned_teams) <> required_count then
+    raise exception 'Select exactly % teams for this stage', required_count;
+  end if;
+
+  if (
+    select count(distinct public.team_compare_key(selected.team_name))
+    from unnest(cleaned_teams) as selected(team_name)
+  ) <> required_count then
+    raise exception 'Do not select the same team twice';
+  end if;
+
+  if exists (
+    select 1
+    from unnest(cleaned_teams) as selected(team_name)
+    where not public.is_valid_stage_prediction_team(selected.team_name)
+  ) then
+    raise exception 'Choose teams from the tournament team list';
+  end if;
+
+  insert into public.stage_predictions (
+    user_id,
+    stage,
+    selected_teams,
+    locked_at
+  )
+  values (
+    auth.uid(),
+    normalized_stage,
+    cleaned_teams,
+    stage_lock_at
+  )
+  on conflict (user_id, stage) do update set
+    selected_teams = excluded.selected_teams,
+    locked_at = excluded.locked_at,
+    correct_teams = '{}',
+    points_awarded = 0,
+    correct_count = 0,
+    scored_at = null,
+    updated_at = now()
+  where public.stage_predictions.scored_at is null
+    and (
+      public.stage_predictions.locked_at is null
+      or public.stage_predictions.locked_at > now()
+    )
+  returning * into saved_prediction;
+
+  if saved_prediction.id is null then
+    raise exception 'This stage is locked';
+  end if;
+
+  return saved_prediction;
+end;
+$$;
+
+create or replace function public.get_live_group_predictions(target_group_id uuid)
+returns table (
+  match_id uuid,
+  match_number integer,
+  team_a text,
+  team_b text,
+  team_a_score integer,
+  team_b_score integer,
+  match_status text,
+  match_date timestamptz,
+  stage text,
+  user_id uuid,
+  username text,
+  predicted_result text,
+  predicted_home_score integer,
+  predicted_away_score integer
+)
+language sql
+security definer
+set search_path = public, extensions
+as $$
+  select
+    m.id as match_id,
+    m.match_number,
+    m.team_a,
+    m.team_b,
+    m.team_a_score,
+    m.team_b_score,
+    m.status as match_status,
+    m.match_date,
+    m.stage,
+    p.user_id,
+    coalesce(lp.username, 'Unknown player') as username,
+    p.predicted_result,
+    p.predicted_home_score,
+    p.predicted_away_score
+  from public.groups g
+  join public.group_members gm
+    on gm.group_id = g.id
+   and gm.status = 'accepted'
+  join public.predictions p
+    on p.user_id = gm.user_id
+  join public.matches m
+    on m.id = p.match_id
+  left join public.leaderboard_profiles lp
+    on lp.id = p.user_id
+  where g.id = target_group_id
+    and g.live_predictions_enabled = true
+    and m.match_date <= now()
+    and m.status in ('live', 'halftime', 'extra_time', 'penalties', 'penalty_shootout')
+    and exists (
+      select 1
+      from public.group_members viewer_membership
+      where viewer_membership.group_id = target_group_id
+        and viewer_membership.user_id = auth.uid()
+        and viewer_membership.status = 'accepted'
+    )
+  order by m.match_date, lp.username;
+$$;
+
+select public.refresh_stage_prediction_windows();
+
+
+-- ---------------------------------------------------------------------
+-- Function search_path hardening.
+-- ---------------------------------------------------------------------
+
+do $$
+declare
+  function_record record;
+begin
+  for function_record in
+    select
+      n.nspname as schema_name,
+      p.proname as function_name,
+      pg_get_function_identity_arguments(p.oid) as function_args
+    from pg_proc p
+    join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'public'
+  loop
+    execute format(
+      'alter function %I.%I(%s) set search_path = public, extensions',
+      function_record.schema_name,
+      function_record.function_name,
+      function_record.function_args
+    );
+  end loop;
+end;
+$$;
+
+
+-- ---------------------------------------------------------------------
+-- Final grants.
+-- Anonymous users can only read explicitly public surfaces.
+-- Signed-in users can execute only RPCs needed by app features.
+-- ---------------------------------------------------------------------
+
+revoke all on public.public_leaderboard_profiles from public;
+revoke all on public.public_leaderboard_profiles from anon;
+revoke all on public.public_leaderboard_profiles from authenticated;
+
+revoke all on public.public_latest_successful_sync from public;
+revoke all on public.public_latest_successful_sync from anon;
+revoke all on public.public_latest_successful_sync from authenticated;
+
+revoke all on public.stage_prediction_windows from public;
+revoke all on public.stage_prediction_windows from anon;
+revoke all on public.stage_prediction_windows from authenticated;
+
+revoke all on public.leaderboard_profiles from public;
+revoke all on public.leaderboard_profiles from anon;
+revoke all on public.leaderboard_profiles from authenticated;
+
+revoke all on public.latest_successful_sync from public;
+revoke all on public.latest_successful_sync from anon;
+revoke all on public.latest_successful_sync from authenticated;
+
+grant select on public.public_leaderboard_profiles to anon, authenticated;
+grant select on public.public_latest_successful_sync to anon, authenticated;
+grant select on public.stage_prediction_windows to anon, authenticated;
+grant select on public.leaderboard_profiles to anon, authenticated;
+grant select on public.latest_successful_sync to anon, authenticated;
+
+revoke execute on all functions in schema public from public;
+revoke execute on all functions in schema public from anon;
+revoke execute on all functions in schema public from authenticated;
+
+grant execute on all functions in schema public to service_role;
+
+grant execute on function public.set_world_cup_winner_prediction(text)
+to authenticated;
+
+grant execute on function public.save_stage_prediction(text, text[])
+to authenticated;
+
+grant execute on function public.create_private_group(text, text)
+to authenticated;
+
+grant execute on function public.delete_private_group(uuid)
+to authenticated;
+
+grant execute on function public.join_group_by_invite_code(text)
+to authenticated;
+
+grant execute on function public.invite_group_member(uuid, uuid)
+to authenticated;
+
+grant execute on function public.respond_group_invitation(uuid, text)
+to authenticated;
+
+grant execute on function public.remove_group_member(uuid, uuid)
+to authenticated;
+
+grant execute on function public.leave_group(uuid)
+to authenticated;
+
+grant execute on function public.regenerate_group_invite_code(uuid)
+to authenticated;
+
+grant execute on function public.update_group_details(uuid, text, text)
+to authenticated;
+
+grant execute on function public.update_group_live_predictions_setting(uuid, boolean)
+to authenticated;
+
+grant execute on function public.get_live_group_predictions(uuid)
+to authenticated;
+
+grant execute on function public.search_profiles_for_invite(uuid, text)
+to authenticated;
+
+grant execute on function public.is_admin(uuid)
+to authenticated;
+
+grant execute on function public.is_group_member(uuid, uuid)
+to authenticated;
+
+grant execute on function public.can_manage_group(uuid, uuid)
+to authenticated;
+
+-- Keep public table reads explicitly granted.
+grant select on public.matches to anon, authenticated;
+grant select on public.groups to authenticated;
+grant select on public.group_members to authenticated;
+grant select on public.group_invitations to authenticated;
+grant select on public.world_cup_winner_predictions to authenticated;
+grant select on public.stage_predictions to authenticated;
