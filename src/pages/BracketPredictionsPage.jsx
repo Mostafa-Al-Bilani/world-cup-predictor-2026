@@ -39,6 +39,102 @@ const statusStyles = {
   scored: "border-gold-300/40 bg-gold-300/10 text-gold-100",
 };
 
+const normalizeText = (value) =>
+  String(value ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/[_-]+/g, " ")
+    .replace(/\s+/g, " ");
+
+const isGroupStage = (stage) => normalizeText(stage).startsWith("group");
+
+const extractGroupLabel = (stage) => {
+  const text = String(stage ?? "").trim();
+
+  const groupMatch = text.match(/group\s+([a-z0-9]+)/i);
+  if (groupMatch?.[1]) {
+    return `Group ${groupMatch[1].toUpperCase()}`;
+  }
+
+  return "Other";
+};
+
+const buildTeamGroupMap = (matches) => {
+  const map = new Map();
+
+  matches.forEach((match) => {
+    if (!isGroupStage(match.stage)) return;
+
+    const groupLabel = extractGroupLabel(match.stage);
+
+    [match.team_a, match.team_b].forEach((team) => {
+      if (!team) return;
+
+      const normalizedTeam = normalizeText(team);
+      if (
+        !normalizedTeam ||
+        normalizedTeam === "tbd" ||
+        normalizedTeam.includes("winner") ||
+        normalizedTeam.includes("runner up") ||
+        normalizedTeam.includes("third")
+      ) {
+        return;
+      }
+
+      if (!map.has(team)) {
+        map.set(team, groupLabel);
+      }
+    });
+  });
+
+  return map;
+};
+
+const getGroupSortValue = (groupLabel) => {
+  if (!groupLabel || groupLabel === "Other") return "ZZZ";
+  return groupLabel;
+};
+
+const groupSelectableTeams = ({ teams, teamGroupMap }) => {
+  const groups = new Map();
+
+  teams.forEach((team) => {
+    const groupLabel = teamGroupMap.get(team) ?? "Other";
+
+    if (!groups.has(groupLabel)) {
+      groups.set(groupLabel, []);
+    }
+
+    groups.get(groupLabel).push(team);
+  });
+
+  return Array.from(groups.entries())
+    .map(([groupLabel, groupTeams]) => ({
+      groupLabel,
+      teams: [...groupTeams].sort((a, b) => a.localeCompare(b)),
+    }))
+    .sort((a, b) => {
+      const groupCompare = getGroupSortValue(a.groupLabel).localeCompare(
+        getGroupSortValue(b.groupLabel),
+      );
+
+      if (groupCompare !== 0) return groupCompare;
+
+      return a.groupLabel.localeCompare(b.groupLabel);
+    });
+};
+
+const getRoundOf32GroupCounts = ({ selectedTeams, teamGroupMap }) => {
+  const counts = new Map();
+
+  selectedTeams.forEach((team) => {
+    const groupLabel = teamGroupMap.get(team) ?? "Other";
+    counts.set(groupLabel, (counts.get(groupLabel) ?? 0) + 1);
+  });
+
+  return counts;
+};
+
 export function BracketPredictionsPage() {
   const { championPrediction, user } = useAuth();
   const [availableTeams, setAvailableTeams] = useState([]);
@@ -82,6 +178,8 @@ export function BracketPredictionsPage() {
   useEffect(() => {
     load();
   }, [load]);
+
+  const teamGroupMap = useMemo(() => buildTeamGroupMap(matches), [matches]);
 
   const predictionByStage = useMemo(
     () =>
@@ -132,12 +230,34 @@ export function BracketPredictionsPage() {
         getStageDependency(stageKey);
 
       if (!previousStageKey) {
-        return availableTeams;
+        return [...availableTeams].sort((a, b) => {
+          const aGroup = teamGroupMap.get(a) ?? "Other";
+          const bGroup = teamGroupMap.get(b) ?? "Other";
+
+          const groupCompare = getGroupSortValue(aGroup).localeCompare(
+            getGroupSortValue(bGroup),
+          );
+
+          if (groupCompare !== 0) return groupCompare;
+
+          return a.localeCompare(b);
+        });
       }
 
-      return previousStageActualTeams;
+      return [...previousStageActualTeams].sort((a, b) => {
+        const aGroup = teamGroupMap.get(a) ?? "Other";
+        const bGroup = teamGroupMap.get(b) ?? "Other";
+
+        const groupCompare = getGroupSortValue(aGroup).localeCompare(
+          getGroupSortValue(bGroup),
+        );
+
+        if (groupCompare !== 0) return groupCompare;
+
+        return a.localeCompare(b);
+      });
     },
-    [availableTeams, getStageDependency],
+    [availableTeams, getStageDependency, teamGroupMap],
   );
 
   const toggleTeam = (stage, team) => {
@@ -164,6 +284,22 @@ export function BracketPredictionsPage() {
           `Select exactly ${config.requiredCount} teams. Remove one before adding another.`,
         );
         return current;
+      }
+
+      if (stage === "round_of_32") {
+        const groupLabel = teamGroupMap.get(team) ?? "Other";
+        const groupCounts = getRoundOf32GroupCounts({
+          selectedTeams: selected,
+          teamGroupMap,
+        });
+        const currentGroupCount = groupCounts.get(groupLabel) ?? 0;
+
+        if (groupLabel !== "Other" && currentGroupCount >= 3) {
+          toast.error(
+            `${groupLabel} already has 3 selected teams. In World Cup 2026, at most 3 teams can advance from one group.`,
+          );
+          return current;
+        }
       }
 
       return { ...current, [stage]: [...selected, team] };
@@ -240,9 +376,8 @@ export function BracketPredictionsPage() {
           </h1>
 
           <p className="mt-4 max-w-3xl text-slate-300">
-            Predict each round only when that round becomes available. These
-            points are separate from match predictions and your World Cup winner
-            pick.
+            Predict each round only when that round becomes available. Teams are
+            grouped by their group-stage group to make selection easier.
           </p>
         </div>
 
@@ -265,6 +400,11 @@ export function BracketPredictionsPage() {
           previous round&apos;s actual qualified teams are known from synced
           fixtures.
         </p>
+
+        <p className="mt-2 text-sm text-slate-200">
+          For the Round of 32, you can select up to 3 teams from the same group:
+          top two plus possible best third-place qualifier.
+        </p>
       </section>
 
       {!availableTeams.length ? (
@@ -283,6 +423,10 @@ export function BracketPredictionsPage() {
             const locked = isStageLocked(lockAt);
             const actualTeams = getActualTeamsForStage(matches, stage.key);
             const selectableTeams = getSelectableTeamsForStage(stage.key);
+            const groupedTeams = groupSelectableTeams({
+              teams: selectableTeams,
+              teamGroupMap,
+            });
 
             const status = stageStatus({
               locked,
@@ -354,30 +498,63 @@ export function BracketPredictionsPage() {
                 </div>
 
                 <div className="p-5">
-                  <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-                    {selectableTeams.map((team) => {
-                      const active = selected.includes(team);
-                      const disabled =
-                        !canEdit ||
-                        (!active && selected.length >= stage.requiredCount);
+                  <div className="space-y-5">
+                    {groupedTeams.map((group) => {
+                      const selectedInGroup = group.teams.filter((team) =>
+                        selected.includes(team),
+                      ).length;
 
                       return (
-                        <button
-                          key={team}
-                          type="button"
-                          disabled={disabled}
-                          onClick={() => toggleTeam(stage.key, team)}
-                          className={`flex min-w-0 items-center gap-3 rounded-lg border px-3 py-3 text-left transition ${
-                            active
-                              ? "border-emerald-300 bg-emerald-300/15 text-white"
-                              : "border-white/10 bg-white/[0.03] text-slate-200 hover:border-emerald-300/50 hover:bg-white/[0.06]"
-                          } disabled:cursor-not-allowed disabled:opacity-55`}
+                        <section
+                          key={`${stage.key}-${group.groupLabel}`}
+                          className="rounded-lg border border-white/10 bg-white/[0.025] p-4"
                         >
-                          <TeamFlag size="md" teamName={team} />
-                          <span className="truncate text-sm font-black">
-                            {team}
-                          </span>
-                        </button>
+                          <div className="mb-3 flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+                            <h3 className="text-sm font-black uppercase tracking-[0.22em] text-emerald-200">
+                              {group.groupLabel}
+                            </h3>
+
+                            <p className="text-xs font-bold text-slate-400">
+                              {selectedInGroup}/{group.teams.length} selected
+                              {stage.key === "round_of_32" &&
+                              group.groupLabel !== "Other"
+                                ? " · max 3"
+                                : ""}
+                            </p>
+                          </div>
+
+                          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                            {group.teams.map((team) => {
+                              const active = selected.includes(team);
+                              const disabled =
+                                !canEdit ||
+                                (!active &&
+                                  selected.length >= stage.requiredCount);
+
+                              return (
+                                <button
+                                  key={team}
+                                  type="button"
+                                  disabled={disabled}
+                                  onClick={() => toggleTeam(stage.key, team)}
+                                  className={`flex min-w-0 items-center gap-3 rounded-lg border px-3 py-3 text-left transition ${
+                                    active
+                                      ? "border-emerald-300 bg-emerald-300/15 text-white"
+                                      : "border-white/10 bg-white/[0.03] text-slate-200 hover:border-emerald-300/50 hover:bg-white/[0.06]"
+                                  } disabled:cursor-not-allowed disabled:opacity-55`}
+                                >
+                                  <TeamFlag size="md" teamName={team} />
+                                  <span className="min-w-0 flex-1 truncate text-sm font-black">
+                                    {team}
+                                  </span>
+                                  <span className="shrink-0 rounded-full bg-slate-950/80 px-2 py-1 text-[10px] font-black uppercase text-slate-400">
+                                    {teamGroupMap.get(team) ?? "Other"}
+                                  </span>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </section>
                       );
                     })}
                   </div>
