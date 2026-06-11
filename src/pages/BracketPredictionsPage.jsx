@@ -162,19 +162,14 @@ export function BracketPredictionsPage() {
     setLoading(true);
 
     try {
-      const [
-        teams,
-        matchRows,
-        predictionRows,
-        championRow,
-        stageWindowRows,
-      ] = await Promise.all([
-        stagePredictionService.getAvailableTeams(),
-        matchService.getMatches(),
-        stagePredictionService.getMyPredictions(user.id),
-        championService.getMyPrediction(user.id),
-        stagePredictionService.getStageWindows(),
-      ]);
+      const [teams, matchRows, predictionRows, championRow, stageWindowRows] =
+        await Promise.all([
+          stagePredictionService.getAvailableTeams(),
+          matchService.getMatches(),
+          stagePredictionService.getMyPredictions(user.id),
+          championService.getMyPrediction(user.id),
+          stagePredictionService.getStageWindows(),
+        ]);
 
       const nextDrafts = Object.fromEntries(
         STAGE_PREDICTION_CONFIGS.map((stage) => [
@@ -532,7 +527,9 @@ export function BracketPredictionsPage() {
                     <div className="rounded-lg border border-white/10 bg-slate-950/60 p-3">
                       <span className="inline-flex items-center gap-2 font-bold text-white">
                         <Lock size={15} className="text-gold-300" />
-                        {lockAt ? `Closes ${formatDateTime(lockAt)}` : "Not open yet"}
+                        {lockAt
+                          ? `Closes ${formatDateTime(lockAt)}`
+                          : "Not open yet"}
                       </span>
 
                       <p className="mt-1 text-xs leading-5 text-slate-400">
@@ -542,8 +539,9 @@ export function BracketPredictionsPage() {
 
                     <span className="inline-flex items-center gap-2">
                       <CheckCircle2 size={15} className="text-emerald-300" />
-                      Actual teams known: {actualTeams.length}/
-                      {stage.requiredCount}
+                      {stage.key === "round_of_32"
+                        ? `Tournament teams available: ${availableTeams.length}`
+                        : `Actual teams known: ${actualTeams.length}/${stage.requiredCount}`}
                     </span>
                   </div>
                 </div>
