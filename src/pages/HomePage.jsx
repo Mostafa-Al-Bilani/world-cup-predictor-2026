@@ -45,6 +45,29 @@ const features = [
   },
 ];
 
+function isPlaceholderTeamName(teamName) {
+  const text = String(teamName ?? "").trim().toLowerCase();
+
+  return (
+    !text ||
+    text === "tbd" ||
+    text.includes("group ") ||
+    text.includes("winner") ||
+    text.includes("runner-up") ||
+    text.includes("runner up") ||
+    text.includes("2nd place") ||
+    text.includes("3rd place") ||
+    text.includes("third place")
+  );
+}
+
+function hasRealTeams(match) {
+  return (
+    !isPlaceholderTeamName(match.team_a) &&
+    !isPlaceholderTeamName(match.team_b)
+  );
+}
+
 export function HomePage() {
   const { user, profile, championPrediction, isAuthenticated } = useAuth();
 
@@ -77,6 +100,7 @@ export function HomePage() {
   const upcomingMatches = useMemo(
     () =>
       matches
+        .filter(hasRealTeams)
         .filter(
           (match) =>
             match.status === "upcoming" &&
@@ -172,12 +196,8 @@ function DashboardHome({
             Your dashboard
           </p>
 
-          <h1 className="mt-3 text-4xl font-black sm:text-5xl">
-            Welcome back
-            {profile?.username || profile?.display_name
-              ? `, ${profile.username ?? profile.display_name}`
-              : ""}
-            .
+          <h1 className="mt-3 text-[2.6rem] font-black leading-tight sm:text-5xl">
+            Welcome back.
           </h1>
 
           <p className="mt-3 max-w-2xl text-slate-300">
@@ -204,10 +224,14 @@ function DashboardHome({
       </section>
 
       <section className="mt-8 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <DashboardStatCard
+          label="Missing predictions"
+          value={missingPredictions.length}
+          tone={missingPredictions.length ? "action" : "default"}
+        />
         <DashboardStatCard label="Total points" value={totalPoints ?? 0} />
         <DashboardStatCard label="Correct picks" value={correctPredictions} />
         <DashboardStatCard label="Exact scores" value={exactScores} />
-        <DashboardStatCard label="Accuracy" value={`${accuracy}%`} />
       </section>
 
       <section className="mt-8 grid gap-6 lg:grid-cols-[1.15fr_0.85fr]">
@@ -253,7 +277,10 @@ function DashboardHome({
 
                         <p className="mt-1 text-sm text-slate-400">
                           {prediction
-                            ? `Your pick: ${formatPredictionSummary(match, prediction)}`
+                            ? `Your pick: ${formatPredictionSummary(
+                                match,
+                                prediction,
+                              )}`
                             : "No prediction yet"}
                         </p>
                       </div>
@@ -302,8 +329,8 @@ function DashboardHome({
               </p>
               <p className="mt-2 text-sm text-slate-400">
                 {championPrediction
-                  ? "Locked for the tournament."
-                  : "Choose your champion before continuing."}
+                  ? "Locked for the tournament. Worth 3 points if correct."
+                  : "Choose your champion. This pick is worth 3 points."}
               </p>
             </div>
           </DashboardPanel>
@@ -431,6 +458,13 @@ function PublicHome({ leaders, upcomingMatches, nextMatch, remaining }) {
                   </div>
                 </article>
               ))}
+
+              {!upcomingMatches.length ? (
+                <EmptyDashboardMessage
+                  title="No upcoming matches"
+                  description="No scheduled upcoming match is available yet."
+                />
+              ) : null}
             </div>
           </section>
 
@@ -481,13 +515,21 @@ function DashboardPanel({ title, actionLabel, actionTo, children }) {
   );
 }
 
-function DashboardStatCard({ label, value }) {
+function DashboardStatCard({ label, value, tone = "default" }) {
   return (
-    <article className="rounded-lg border border-white/10 bg-white/[0.04] p-5">
+    <article
+      className={`rounded-lg border p-4 ${
+        tone === "action"
+          ? "border-emerald-300/30 bg-emerald-300/10"
+          : "border-white/10 bg-white/[0.04]"
+      }`}
+    >
       <p className="text-xs font-black uppercase tracking-[0.22em] text-slate-400">
         {label}
       </p>
-      <p className="mt-3 text-3xl font-black text-white">{value}</p>
+      <p className="mt-3 text-2xl font-black text-white sm:text-3xl">
+        {value}
+      </p>
     </article>
   );
 }
