@@ -1,4 +1,4 @@
-import { createClient } from "@supabase/supabase-js";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 type MatchRow = {
   id: string;
@@ -109,8 +109,7 @@ const corsHeaders = {
 const PROVIDER_NAME = "espn";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
-const SUPABASE_SERVICE_ROLE_KEY =
-  Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SERVICE_ROLE_KEY") ?? "";
 
 const ESPN_SCOREBOARD_URL =
   Deno.env.get("ESPN_SCOREBOARD_URL") ??
@@ -304,8 +303,7 @@ async function getCandidateMatches(now: Date): Promise<MatchRow[]> {
 
 function shouldSyncMatch(match: MatchRow, now: Date) {
   const matchDate = new Date(match.match_date);
-  const minutesUntilKickoff =
-    (matchDate.getTime() - now.getTime()) / 1000 / 60;
+  const minutesUntilKickoff = (matchDate.getTime() - now.getTime()) / 1000 / 60;
 
   const normalizedStatus = normalizeStatus(match.status);
   const lastSyncedAt = match.last_synced_at
@@ -314,8 +312,7 @@ function shouldSyncMatch(match: MatchRow, now: Date) {
 
   if (!lastSyncedAt) return true;
 
-  const secondsSinceLastSync =
-    (now.getTime() - lastSyncedAt.getTime()) / 1000;
+  const secondsSinceLastSync = (now.getTime() - lastSyncedAt.getTime()) / 1000;
 
   if (isLiveStatus(normalizedStatus)) {
     return secondsSinceLastSync >= 45;
@@ -379,9 +376,7 @@ function findEspnEventForMatch(match: MatchRow, events: EspnEvent[]) {
   return events.find((event) => {
     const competition = event.competitions?.[0];
     const competitors = competition?.competitors ?? [];
-    const eventTime = new Date(
-      competition?.date ?? event.date ?? "",
-    ).getTime();
+    const eventTime = new Date(competition?.date ?? event.date ?? "").getTime();
 
     if (!Number.isFinite(eventTime)) return false;
 
@@ -487,17 +482,19 @@ function mapEspnStatus(status: EspnEvent["status"]) {
 }
 
 function getElapsed(status: EspnEvent["status"]) {
-  if (typeof status?.clock === "number" && Number.isFinite(status.clock)) {
-    return Math.floor(status.clock);
+  const displayClock = status?.displayClock ?? "";
+  const displayMatch = displayClock.match(/\d+/);
+
+  if (displayMatch) {
+    const elapsed = Number(displayMatch[0]);
+    return Number.isFinite(elapsed) ? elapsed : null;
   }
 
-  const displayClock = status?.displayClock ?? "";
-  const match = displayClock.match(/\d+/);
+  if (typeof status?.clock === "number" && Number.isFinite(status.clock)) {
+    return Math.floor(status.clock / 60);
+  }
 
-  if (!match) return null;
-
-  const elapsed = Number(match[0]);
-  return Number.isFinite(elapsed) ? elapsed : null;
+  return null;
 }
 
 function getStatusDetail(status: EspnEvent["status"]) {
