@@ -27,13 +27,13 @@ function createSessionStorageMock() {
 }
 
 test.beforeEach(() => {
-  global.window = {
+  globalThis.window = {
     sessionStorage: createSessionStorageMock(),
   };
 });
 
 test.afterEach(() => {
-  delete global.window;
+  delete globalThis.window;
 });
 
 test("remembers and reads pending champion pick for matching email", () => {

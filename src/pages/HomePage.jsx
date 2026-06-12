@@ -21,7 +21,7 @@ import { profileService } from "../services/profileService";
 import { supabase } from "../services/supabaseClient";
 import { formatDateTime, getTimeRemaining, isMatchLocked } from "../utils/date";
 import { getSafeErrorMessage } from "../utils/errors";
-import { getAccuracy, getPredictionTotalPoints } from "../utils/predictions";
+import { getPredictionTotalPoints } from "../utils/predictions";
 import { MATCHES_UPDATED_EVENT } from "../hooks/useLiveMatchNotifications";
 
 const features = [
@@ -313,11 +313,6 @@ function DashboardHome({
 
   const totalPoints =
     profile?.total_points ?? profile?.points ?? totalPredictionPoints;
-
-  const accuracy = getAccuracy({
-    correct_predictions: profile?.correct_predictions ?? correctPredictions,
-    total_predictions: profile?.total_predictions ?? predictions.length,
-  });
 
   const pendingInvitationCount = pendingInvitations.length;
   const firstInvitation = pendingInvitations[0];

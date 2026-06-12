@@ -3,6 +3,24 @@ import { localStore } from './localStore';
 import { normalizePredictionScorePair, validatePredictionResult, validateUuid } from '../utils/validation';
 import { calculatePredictionPoints } from '../utils/predictions';
 
+export const PREDICTIONS_UPDATED_EVENT =
+  'world-cup-predictor:predictions-updated';
+
+const notifyPredictionsUpdated = (prediction) => {
+  if (
+    typeof window === 'undefined' ||
+    typeof window.dispatchEvent !== 'function'
+  ) {
+    return;
+  }
+
+  window.dispatchEvent(
+    new CustomEvent(PREDICTIONS_UPDATED_EVENT, {
+      detail: { prediction },
+    }),
+  );
+};
+
 const scorePredictionsForMatch = (match, predictions) =>
   predictions.map((prediction) => {
     if (prediction.match_id !== match.id || match.status !== 'finished' || !match.result) {
@@ -62,7 +80,10 @@ export const predictionService = {
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       };
-      return localStore.upsertPrediction(prediction);
+
+      const savedPrediction = localStore.upsertPrediction(prediction);
+      notifyPredictionsUpdated(savedPrediction);
+      return savedPrediction;
     }
 
     const currentUserId = await getCurrentUserId();
@@ -81,7 +102,10 @@ export const predictionService = {
       )
       .select('*')
       .single();
+
     if (error) throw error;
+
+    notifyPredictionsUpdated(data);
     return data;
   },
   async recalculateMatch(matchId) {

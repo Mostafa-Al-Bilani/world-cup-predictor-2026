@@ -5,7 +5,11 @@ import clsx from "clsx";
 import { useAuth } from "../context/AuthContext";
 import { MATCHES_UPDATED_EVENT } from "../hooks/useLiveMatchNotifications";
 import { matchService } from "../services/matchService";
-import { predictionService } from "../services/predictionService";
+import {
+  PREDICTIONS_UPDATED_EVENT,
+  predictionService,
+} from "../services/predictionService";
+import { getMissingPredictionCount } from "../utils/matches";
 
 const baseNavItems = [
   { to: "/", label: "Home" },
@@ -18,25 +22,6 @@ const authenticatedExtraNavItems = [
   { to: "/bracket", label: "Bracket" },
   { to: "/groups", label: "Groups" },
 ];
-
-const normalizeStatus = (status) =>
-  String(status ?? "")
-    .trim()
-    .toLowerCase()
-    .replace(/[\s-]+/g, "_");
-
-function getMissingPredictionCount({ matches, predictions }) {
-  const predictedMatchIds = new Set(
-    predictions.map((prediction) => prediction.match_id),
-  );
-
-  return matches.filter((match) => {
-    const isUpcoming = normalizeStatus(match.status) === "upcoming";
-    const isFutureMatch = new Date(match.match_date).getTime() > Date.now();
-
-    return isUpcoming && isFutureMatch && !predictedMatchIds.has(match.id);
-  }).length;
-}
 
 export function Navbar() {
   const [open, setOpen] = useState(false);
@@ -94,11 +79,23 @@ export function Navbar() {
       }
     };
 
+    const handlePredictionsUpdated = () => {
+      loadMissingPredictionCount();
+    };
+
     window.addEventListener(MATCHES_UPDATED_EVENT, handleMatchesUpdated);
+    window.addEventListener(
+      PREDICTIONS_UPDATED_EVENT,
+      handlePredictionsUpdated,
+    );
 
     return () => {
       cancelled = true;
       window.removeEventListener(MATCHES_UPDATED_EVENT, handleMatchesUpdated);
+      window.removeEventListener(
+        PREDICTIONS_UPDATED_EVENT,
+        handlePredictionsUpdated,
+      );
     };
   }, [isAuthenticated, user?.id]);
 

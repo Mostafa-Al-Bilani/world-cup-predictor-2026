@@ -29,11 +29,6 @@ const HOST_COUNTRY_MARKERS = [
   { marker: 'Vancouver', country: 'Canada' },
 ];
 
-const FINISHED_STATUS_CODES = new Set(['FT', 'AET', 'PEN']);
-const HALFTIME_STATUS_CODES = new Set(['HT']);
-const LIVE_STATUS_CODES = new Set(['1H', '2H', 'ET', 'BT', 'P', 'LIVE', 'INT', 'SUSP']);
-const POSTPONED_STATUS_CODES = new Set(['PST']);
-const CANCELLED_STATUS_CODES = new Set(['CANC', 'ABD', 'AWD', 'WO']);
 
 const safeString = (value) => String(value ?? '').trim();
 
