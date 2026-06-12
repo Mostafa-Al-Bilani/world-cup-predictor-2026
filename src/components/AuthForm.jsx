@@ -223,6 +223,8 @@ export function AuthForm({ mode }) {
             value={form.password}
             onChange={updateForm}
             autoComplete={isRegister ? 'new-password' : 'current-password'}
+            placeholder={isRegister ? undefined : 'Your password'}
+            minLength={isRegister ? undefined : 1}
           />
 
           {isRegister ? (

@@ -1,7 +1,15 @@
 import { Eye, EyeOff } from 'lucide-react';
 import { useState } from 'react';
 
-export function PasswordField({ label, name, value, onChange, autoComplete, placeholder = 'At least 6 characters' }) {
+export function PasswordField({
+  label,
+  name,
+  value,
+  onChange,
+  autoComplete,
+  placeholder = '10+ characters, upper & lower case, number',
+  minLength = 10,
+}) {
   const [visible, setVisible] = useState(false);
 
   return (
@@ -10,7 +18,7 @@ export function PasswordField({ label, name, value, onChange, autoComplete, plac
       <span className="mt-2 flex w-full min-w-0 overflow-hidden rounded-lg border border-white/10 bg-white/5 transition focus-within:border-emerald-300">
         <input
           required
-          minLength={6}
+          minLength={minLength}
           type={visible ? 'text' : 'password'}
           name={name}
           value={value}

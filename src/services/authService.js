@@ -1,6 +1,6 @@
 import { isDemoMode, supabase } from './supabaseClient';
 import { localStore } from './localStore';
-import { normalizeEmail, normalizeUsername, validatePassword } from '../utils/validation';
+import { normalizeEmail, normalizeUsername, requirePassword, validatePassword } from '../utils/validation';
 
 const makeProfile = ({ id, email, username, isAdmin = false }) => ({
   id,
@@ -71,7 +71,7 @@ export const authService = {
   },
   async signIn({ email, password }) {
     const normalizedEmail = normalizeEmail(email);
-    const normalizedPassword = validatePassword(password);
+    const normalizedPassword = requirePassword(password);
 
     if (isDemoMode) {
       const store = localStore.getStore();

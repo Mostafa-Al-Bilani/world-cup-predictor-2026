@@ -20,7 +20,7 @@ const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 export const limits = {
   email: 254,
   username: 40,
-  passwordMin: 6,
+  passwordMin: 10,
   groupName: 80,
   groupDescription: 500,
   searchQuery: 80,
@@ -83,6 +83,23 @@ export function validatePassword(value, label = "Password") {
     throw new Error(
       `${label} must be at least ${limits.passwordMin} characters.`,
     );
+  }
+  if (
+    !/[a-z]/.test(password) ||
+    !/[A-Z]/.test(password) ||
+    !/\d/.test(password)
+  ) {
+    throw new Error(
+      `${label} must include an uppercase letter, a lowercase letter, and a number.`,
+    );
+  }
+  return password;
+}
+
+export function requirePassword(value, label = "Password") {
+  const password = String(value ?? "");
+  if (!password) {
+    throw new Error(`${label} is required.`);
   }
   return password;
 }
