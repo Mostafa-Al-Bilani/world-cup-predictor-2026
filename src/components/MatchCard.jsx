@@ -21,7 +21,9 @@ import {
 } from "../utils/predictions";
 
 function isPlaceholderTeamName(teamName) {
-  const text = String(teamName ?? "").trim().toLowerCase();
+  const text = String(teamName ?? "")
+    .trim()
+    .toLowerCase();
 
   return (
     !text ||
@@ -37,7 +39,10 @@ function isPlaceholderTeamName(teamName) {
 }
 
 function getPredictionLockMessage({ match, normalizedStatus }) {
-  if (isPlaceholderTeamName(match.team_a) || isPlaceholderTeamName(match.team_b)) {
+  if (
+    isPlaceholderTeamName(match.team_a) ||
+    isPlaceholderTeamName(match.team_b)
+  ) {
     return "Prediction opens when both real teams are known.";
   }
 
@@ -201,7 +206,9 @@ export function MatchCard({
     isPlaceholderTeamName(match.team_a) || isPlaceholderTeamName(match.team_b);
 
   const locked =
-    hasPlaceholderTeams || isMatchLocked(match) || normalizedStatus !== "upcoming";
+    hasPlaceholderTeams ||
+    isMatchLocked(match) ||
+    normalizedStatus !== "upcoming";
 
   const lockMessage = getPredictionLockMessage({ match, normalizedStatus });
   const canDraw = matchAllowsDraw(match);
@@ -266,8 +273,16 @@ export function MatchCard({
     });
   };
 
-  const selectResult = (result) => {
-    setDraft((current) => ({ ...current, result }));
+  const updateScore = (field, value) => {
+    setDraft((current) => {
+      const nextDraft = { ...current, [field]: value };
+      const automaticResult = getScoreResult(nextDraft);
+
+      return {
+        ...nextDraft,
+        result: automaticResult,
+      };
+    });
   };
 
   const updateScore = (field, value) => {
@@ -305,7 +320,6 @@ export function MatchCard({
         {shouldShowScoreBox(match) ? (
           <div className="mt-5 rounded-lg border border-white/10 bg-white/5 px-4 py-3 text-center text-2xl font-black">
             {match.team_a_score ?? "-"} : {match.team_b_score ?? "-"}
-
             {livePhaseLabel ? (
               <span
                 className={`ml-2 align-middle text-xs font-bold ${getLivePhaseClassName(
@@ -367,7 +381,7 @@ export function MatchCard({
                   label={<PredictionLabel name={match.team_a} />}
                   selected={draft.result === "team_a"}
                   disabled={locked || busy}
-                  onClick={() => selectResult("team_a")}
+                  readOnly
                 />
 
                 {canDraw ? (
@@ -375,7 +389,7 @@ export function MatchCard({
                     label="Draw"
                     selected={draft.result === "draw"}
                     disabled={locked || busy}
-                    onClick={() => selectResult("draw")}
+                    readOnly
                   />
                 ) : null}
 
@@ -383,7 +397,7 @@ export function MatchCard({
                   label={<PredictionLabel name={match.team_b} />}
                   selected={draft.result === "team_b"}
                   disabled={locked || busy}
-                  onClick={() => selectResult("team_b")}
+                  readOnly
                 />
               </div>
 
