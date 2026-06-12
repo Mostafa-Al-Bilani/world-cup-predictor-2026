@@ -285,18 +285,6 @@ export function MatchCard({
     });
   };
 
-  const updateScore = (field, value) => {
-    setDraft((current) => {
-      const nextDraft = { ...current, [field]: value };
-      const automaticResult = getScoreResult(nextDraft);
-
-      return {
-        ...nextDraft,
-        result: automaticResult,
-      };
-    });
-  };
-
   return (
     <article className="group overflow-hidden rounded-lg border border-white/10 bg-slate-950/72 shadow-xl transition hover:-translate-y-1 hover:border-emerald-300/40">
       <div className="bg-pitch-lines bg-[length:32px_32px] px-5 py-4">
