@@ -11,6 +11,8 @@ import {
   Trophy,
   Users,
 } from "lucide-react";
+import { EmptyState } from "../components/EmptyState";
+import { LoadingSpinner } from "../components/LoadingSpinner";
 import { MatchCard } from "../components/MatchCard";
 import { TopThreePodium } from "../components/TopThreePodium";
 import { useAuth } from "../context/AuthContext";
@@ -91,6 +93,8 @@ export function HomePage() {
   const [championPrediction, setChampionPrediction] = useState(null);
   const [pendingInvitations, setPendingInvitations] = useState([]);
   const [busyMatchId, setBusyMatchId] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
   const [tick, setTick] = useState(Date.now());
 
   const loadDashboard = useCallback(async () => {
@@ -119,6 +123,7 @@ export function HomePage() {
     setPredictions(predictionRows);
     setChampionPrediction(championPredictionRow);
     setPendingInvitations(invitationRows);
+    setLoadError(false);
   }, [user?.id]);
 
   useEffect(() => {
@@ -136,14 +141,36 @@ export function HomePage() {
   }, []);
 
   useEffect(() => {
-    loadDashboard().catch(() => undefined);
+    let cancelled = false;
+
+    setLoading(true);
+
+    loadDashboard()
+      .catch(() => {
+        if (!cancelled) setLoadError(true);
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
 
     const intervalId = window.setInterval(() => {
       loadDashboard().catch(() => undefined);
     }, 60000);
 
-    return () => window.clearInterval(intervalId);
+    return () => {
+      cancelled = true;
+      window.clearInterval(intervalId);
+    };
   }, [loadDashboard]);
+
+  const retryLoad = () => {
+    setLoading(true);
+    setLoadError(false);
+
+    loadDashboard()
+      .catch(() => setLoadError(true))
+      .finally(() => setLoading(false));
+  };
 
   useEffect(() => {
     const interval = window.setInterval(() => setTick(Date.now()), 1000);
@@ -219,6 +246,30 @@ export function HomePage() {
       setBusyMatchId(null);
     }
   };
+
+  if (loading) {
+    return <LoadingSpinner label="Loading dashboard" />;
+  }
+
+  if (loadError) {
+    return (
+      <main className="mx-auto grid min-h-[60vh] max-w-3xl place-items-center px-4 py-16 sm:px-6 lg:px-8">
+        <EmptyState
+          title="Could not load the dashboard"
+          description="Something went wrong while loading matches and scores. Check your connection and try again."
+          action={
+            <button
+              type="button"
+              onClick={retryLoad}
+              className="rounded-full bg-emerald-300 px-5 py-3 text-sm font-black text-emerald-950 transition hover:bg-white"
+            >
+              Try again
+            </button>
+          }
+        />
+      </main>
+    );
+  }
 
   if (isAuthenticated) {
     return (
