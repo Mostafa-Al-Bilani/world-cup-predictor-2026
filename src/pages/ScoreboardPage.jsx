@@ -64,8 +64,8 @@ export function ScoreboardPage() {
         setLatestSync(syncLog);
         setGroups(myGroups);
 
-        if (myGroups.length && !selectedGroupId) {
-          setSelectedGroupId(myGroups[0].id);
+        if (myGroups.length) {
+          setSelectedGroupId((current) => current || myGroups[0].id);
         }
       } catch (error) {
         toast.error(getSafeErrorMessage(error, "Could not load scoreboard."));
@@ -75,7 +75,7 @@ export function ScoreboardPage() {
     }
 
     load();
-  }, [isAuthenticated, selectedGroupId, user?.id]);
+  }, [isAuthenticated, user?.id]);
 
   useEffect(() => {
     async function loadGroupLeaderboard() {
@@ -106,12 +106,7 @@ export function ScoreboardPage() {
   const activePlayers = scope === "group" ? groupPlayers : globalPlayers;
 
   const rankedPlayers = useMemo(() => {
-    const query = search.trim().toLowerCase();
-
     return sortLeaderboardUsers(activePlayers)
-      .filter(
-        (player) => !query || player.username.toLowerCase().includes(query),
-      )
       .sort((a, b) => {
         const primary =
           sortBy === "accuracy"
@@ -141,10 +136,21 @@ export function ScoreboardPage() {
 
         return a.username.localeCompare(b.username);
       });
-  }, [activePlayers, search, sortBy]);
+  }, [activePlayers, sortBy]);
+
+  // Search only narrows the visible list; rank, player count, and top
+  // score stay based on the full leaderboard.
+  const visiblePlayers = useMemo(() => {
+    const query = search.trim().toLowerCase();
+    if (!query) return rankedPlayers;
+
+    return rankedPlayers.filter((player) =>
+      player.username.toLowerCase().includes(query),
+    );
+  }, [rankedPlayers, search]);
 
   const selectedGroup = groups.find((group) => group.id === selectedGroupId);
-  const hasScoredRows = hasScoredLeaderboardEntries(rankedPlayers);
+  const hasScoredRows = hasScoredLeaderboardEntries(visiblePlayers);
 
   const currentUserRank =
     rankedPlayers.findIndex((player) => player.id === user?.id) + 1;
@@ -321,7 +327,7 @@ export function ScoreboardPage() {
         </div>
       ) : null}
 
-      {!groupLoading && rankedPlayers.length ? (
+      {!groupLoading && visiblePlayers.length ? (
         <>
           {!hasScoredRows ? (
             <div className="mt-8">
@@ -336,18 +342,18 @@ export function ScoreboardPage() {
             </div>
           ) : (
             <div className="mt-10">
-              <TopThreePodium users={rankedPlayers} />
+              <TopThreePodium users={visiblePlayers} />
             </div>
           )}
 
           <div className="mt-8">
-            <ScoreboardTable users={rankedPlayers} currentUserId={user?.id} />
+            <ScoreboardTable users={visiblePlayers} currentUserId={user?.id} />
           </div>
         </>
       ) : null}
 
       {!groupLoading &&
-      !rankedPlayers.length &&
+      !visiblePlayers.length &&
       !(scope === "group" && (!isAuthenticated || !groups.length)) ? (
         <div className="mt-8">
           <EmptyState
