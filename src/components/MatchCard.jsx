@@ -66,7 +66,22 @@ function getPredictionLockMessage({ match, normalizedStatus }) {
   return "";
 }
 
+function hasCompleteDraftScore(draft) {
+  return (
+    draft.homeScore !== "" &&
+    draft.homeScore !== null &&
+    draft.homeScore !== undefined &&
+    draft.awayScore !== "" &&
+    draft.awayScore !== null &&
+    draft.awayScore !== undefined
+  );
+}
+
 function getDraftScores(draft) {
+  if (!hasCompleteDraftScore(draft)) {
+    return null;
+  }
+
   const homeScore = Number(draft.homeScore);
   const awayScore = Number(draft.awayScore);
 
@@ -87,10 +102,14 @@ function getScoreResult(draft) {
 }
 
 function getScoreConsistencyError({ draft, canDraw }) {
-  if (!draft.result) return "";
-
   const scoreResult = getScoreResult(draft);
   if (!scoreResult) return "";
+
+  if (!canDraw && scoreResult === "draw") {
+    return "Knockout predictions cannot use a tied score.";
+  }
+
+  if (!draft.result) return "";
 
   if (draft.result === scoreResult) return "";
 
@@ -104,10 +123,6 @@ function getScoreConsistencyError({ draft, canDraw }) {
 
   if (draft.result === "team_b" && scoreResult !== "team_b") {
     return "The score must show the second team winning.";
-  }
-
-  if (!canDraw && scoreResult === "draw") {
-    return "Knockout predictions cannot use a tied score.";
   }
 
   return "Prediction result and score do not match.";
@@ -129,21 +144,25 @@ function getPredictionHelperMessage({
     return lockMessage;
   }
 
-  if (!draft.result && !hasCompleteScore) {
-    return "Choose a winner/result and enter both scores before saving.";
-  }
-
-  if (!draft.result) {
-    return "Choose a winner/result before saving.";
-  }
-
   if (!hasCompleteScore) {
-    return "Enter both predicted scores before saving.";
+    return "Enter both scores. The winner/result is selected automatically.";
   }
 
   const consistencyError = getScoreConsistencyError({ draft, canDraw });
   if (consistencyError) {
     return consistencyError;
+  }
+
+  if (draft.result === "team_a") {
+    return "First team selected automatically from the score.";
+  }
+
+  if (draft.result === "team_b") {
+    return "Second team selected automatically from the score.";
+  }
+
+  if (draft.result === "draw") {
+    return "Draw selected automatically from the score.";
   }
 
   return "Ready to save.";
@@ -159,11 +178,12 @@ function getSaveButtonLabel({
 }) {
   if (busy) return "Saving...";
   if (locked) return prediction ? "Prediction locked" : "Closed";
-  if (!draft.result) return "Choose result";
   if (!hasCompleteScore) return "Enter score";
 
   const consistencyError = getScoreConsistencyError({ draft, canDraw });
-  if (consistencyError) return "Fix result/score";
+  if (consistencyError) return "Fix score";
+
+  if (!draft.result) return "Enter score";
 
   return prediction ? "Update prediction" : "Save prediction";
 }
@@ -206,13 +226,7 @@ export function MatchCard({
     prediction?.predicted_result,
   ]);
 
-  const hasCompleteScore =
-    draft.homeScore !== "" &&
-    draft.homeScore !== null &&
-    draft.homeScore !== undefined &&
-    draft.awayScore !== "" &&
-    draft.awayScore !== null &&
-    draft.awayScore !== undefined;
+  const hasCompleteScore = hasCompleteDraftScore(draft);
 
   const scoreConsistencyError = getScoreConsistencyError({ draft, canDraw });
 
@@ -257,7 +271,15 @@ export function MatchCard({
   };
 
   const updateScore = (field, value) => {
-    setDraft((current) => ({ ...current, [field]: value }));
+    setDraft((current) => {
+      const nextDraft = { ...current, [field]: value };
+      const automaticResult = getScoreResult(nextDraft);
+
+      return {
+        ...nextDraft,
+        result: automaticResult,
+      };
+    });
   };
 
   return (

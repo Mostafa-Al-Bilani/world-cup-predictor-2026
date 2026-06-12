@@ -10,7 +10,10 @@ import {
 
 test("normalizes match display status", () => {
   assert.equal(normalizeMatchDisplayStatus("Extra Time"), "extra_time");
-  assert.equal(normalizeMatchDisplayStatus("penalty-shootout"), "penalty_shootout");
+  assert.equal(
+    normalizeMatchDisplayStatus("penalty-shootout"),
+    "penalty_shootout",
+  );
   assert.equal(normalizeMatchDisplayStatus(" LIVE "), "live");
 });
 
@@ -40,6 +43,18 @@ test("returns empty label for live match without elapsed", () => {
   assert.equal(getLivePhaseLabel({ status: "live", elapsed: null }), "");
 });
 
+test("returns Half time label for halftime", () => {
+  assert.equal(getLivePhaseLabel({ status: "halftime" }), "Half time");
+
+  assert.equal(
+    getLivePhaseLabel({
+      status: "live",
+      status_detail: "HT",
+    }),
+    "Half time",
+  );
+});
+
 test("returns ET label for extra time", () => {
   assert.equal(getLivePhaseLabel({ status: "extra_time" }), "ET");
 });
@@ -55,13 +70,7 @@ test("returns correct phase class names", () => {
     "text-amber-200",
   );
 
-  assert.equal(
-    getLivePhaseClassName({ status: "penalties" }),
-    "text-rose-200",
-  );
+  assert.equal(getLivePhaseClassName({ status: "penalties" }), "text-rose-200");
 
-  assert.equal(
-    getLivePhaseClassName({ status: "live" }),
-    "text-emerald-200",
-  );
+  assert.equal(getLivePhaseClassName({ status: "live" }), "text-emerald-200");
 });

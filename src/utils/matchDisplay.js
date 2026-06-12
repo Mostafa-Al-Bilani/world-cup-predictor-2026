@@ -22,12 +22,9 @@ const formatStatusDetail = (statusDetail) => {
 
   if (!text) return "";
 
-  const upperText = text.toUpperCase();
-
-  if (upperText === "HT") return "Half time";
-  if (upperText === "FT") return "Full time";
-  if (upperText === "ET") return "Extra time";
-  if (upperText === "PEN") return "Penalties";
+  if (text.toUpperCase() === "HT") {
+    return "Half time";
+  }
 
   if (/\d/.test(text) && text.includes("'")) {
     return `${text} min`;
@@ -39,23 +36,16 @@ const formatStatusDetail = (statusDetail) => {
 export const getLivePhaseLabel = (match) => {
   const status = normalizeMatchDisplayStatus(match?.status);
   const statusDetail = formatStatusDetail(match?.status_detail);
-  const normalizedDetail = String(match?.status_detail ?? "")
-    .trim()
-    .toUpperCase();
-
-  if (status === "finished") {
-    return statusDetail || "Full time";
-  }
 
   if (status === "extra_time") {
-    return statusDetail || "Extra time";
+    return statusDetail || "ET";
   }
 
   if (status === "penalties" || status === "penalty_shootout") {
-    return statusDetail || "Penalties";
+    return statusDetail || "PEN";
   }
 
-  if (status === "halftime" || normalizedDetail === "HT") {
+  if (status === "halftime") {
     return "Half time";
   }
 
@@ -73,7 +63,9 @@ export const getLivePhaseLabel = (match) => {
 export const getLivePhaseClassName = (match) => {
   const status = normalizeMatchDisplayStatus(match?.status);
 
-  if (status === "extra_time") return "text-amber-200";
+  if (status === "extra_time") {
+    return "text-amber-200";
+  }
 
   if (status === "penalties" || status === "penalty_shootout") {
     return "text-rose-200";
