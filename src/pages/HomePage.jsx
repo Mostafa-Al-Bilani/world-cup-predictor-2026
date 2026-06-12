@@ -516,7 +516,13 @@ function DashboardHome({
   );
 }
 
-function PublicHome({ leaders, upcomingMatches, liveMatches, nextMatch, remaining }) {
+function PublicHome({
+  leaders,
+  upcomingMatches,
+  liveMatches,
+  nextMatch,
+  remaining,
+}) {
   return (
     <main>
       <section className="relative overflow-hidden border-b border-white/10">
@@ -672,9 +678,11 @@ function LiveMatchFocusSection({
 }) {
   if (!liveMatches.length) return null;
 
+  const hasMultipleLiveMatches = liveMatches.length > 1;
+
   return (
-    <section className="mt-8 rounded-xl border border-emerald-300/30 bg-emerald-300/10 p-5 shadow-2xl">
-      <div className="mb-5 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+    <section className="mt-8 rounded-xl border border-emerald-300/30 bg-emerald-300/10 p-5 shadow-2xl sm:p-6">
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
         <div>
           <p className="text-xs font-black uppercase tracking-[0.24em] text-emerald-300">
             Live now
@@ -697,21 +705,29 @@ function LiveMatchFocusSection({
         </Link>
       </div>
 
-      <div className="grid gap-5 lg:grid-cols-2">
-        {liveMatches.map((match) => (
-          <div
-            key={match.id}
-            className="rounded-lg ring-2 ring-emerald-300/60 ring-offset-4 ring-offset-slate-950"
-          >
-            <MatchCard
-              match={match}
-              prediction={predictionByMatch.get(match.id)}
-              isAuthenticated={isAuthenticated}
-              busy={busyMatchId === match.id}
-              onPredict={onPredict}
-            />
-          </div>
-        ))}
+      <div className="mt-6 flex justify-center">
+        <div
+          className={
+            hasMultipleLiveMatches
+              ? "grid w-full max-w-6xl gap-5 lg:grid-cols-2"
+              : "w-full max-w-3xl"
+          }
+        >
+          {liveMatches.map((match) => (
+            <div
+              key={match.id}
+              className="rounded-lg ring-2 ring-emerald-300/60 ring-offset-4 ring-offset-slate-950"
+            >
+              <MatchCard
+                match={match}
+                prediction={predictionByMatch.get(match.id)}
+                isAuthenticated={isAuthenticated}
+                busy={busyMatchId === match.id}
+                onPredict={onPredict}
+              />
+            </div>
+          ))}
+        </div>
       </div>
     </section>
   );
