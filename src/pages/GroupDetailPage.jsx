@@ -66,6 +66,9 @@ export function GroupDetailPage() {
 
       if (!groupRow) {
         setGroup(null);
+        setMembers([]);
+        setLeaderboard([]);
+        setInvitations([]);
         return;
       }
 
@@ -84,6 +87,10 @@ export function GroupDetailPage() {
       setLeaderboard(leaderboardRows);
       setInvitations(invitationRows);
     } catch (error) {
+      setGroup(null);
+      setMembers([]);
+      setLeaderboard([]);
+      setInvitations([]);
       toast.error(getSafeErrorMessage(error, "Could not load group."));
     } finally {
       setLoading(false);
