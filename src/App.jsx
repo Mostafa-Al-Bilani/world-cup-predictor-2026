@@ -6,6 +6,7 @@ import { PasswordRecoveryRedirect } from "./components/PasswordRecoveryRedirect"
 import { ProtectedRoute } from "./components/ProtectedRoute";
 import { ScrollToTop } from "./components/ScrollToTop";
 import { AuthProvider } from "./context/AuthContext";
+import { useLiveMatchNotifications } from "./hooks/useLiveMatchNotifications";
 import { AppLayout } from "./layouts/AppLayout";
 import { AdminDashboardPage } from "./pages/AdminDashboardPage";
 import { BracketPredictionsPage } from "./pages/BracketPredictionsPage";
@@ -24,6 +25,11 @@ import { ResetPasswordPage } from "./pages/ResetPasswordPage";
 import { ScoreboardPage } from "./pages/ScoreboardPage";
 import { hasSupabaseConfigurationError } from "./services/supabaseClient";
 
+function LiveMatchNotificationsBridge() {
+  useLiveMatchNotifications();
+  return null;
+}
+
 export function App() {
   if (hasSupabaseConfigurationError) {
     return <ConfigurationErrorPage />;
@@ -34,6 +40,7 @@ export function App() {
       <HashRouter>
         <ScrollToTop />
         <PasswordRecoveryRedirect />
+        <LiveMatchNotificationsBridge />
         <ChampionGate />
 
         <Routes>

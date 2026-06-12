@@ -22,6 +22,7 @@ import { supabase } from "../services/supabaseClient";
 import { formatDateTime, getTimeRemaining, isMatchLocked } from "../utils/date";
 import { getSafeErrorMessage } from "../utils/errors";
 import { getAccuracy, getPredictionTotalPoints } from "../utils/predictions";
+import { MATCHES_UPDATED_EVENT } from "../hooks/useLiveMatchNotifications";
 
 const features = [
   {
@@ -81,13 +82,9 @@ const normalizeStatus = (status) =>
     .replace(/[\s-]+/g, "_");
 
 const isLiveMatchStatus = (status) =>
-  [
-    "live",
-    "halftime",
-    "extra_time",
-    "penalties",
-    "penalty_shootout",
-  ].includes(normalizeStatus(status));
+  ["live", "halftime", "extra_time", "penalties", "penalty_shootout"].includes(
+    normalizeStatus(status),
+  );
 
 async function getChampionPick(userId) {
   if (!userId) return null;
@@ -146,6 +143,20 @@ export function HomePage() {
     setChampionPrediction(championPredictionRow);
     setPendingInvitations(invitationRows);
   }, [user?.id]);
+
+  useEffect(() => {
+    const handleMatchesUpdated = (event) => {
+      if (Array.isArray(event.detail?.matches)) {
+        setMatches(event.detail.matches);
+      }
+    };
+
+    window.addEventListener(MATCHES_UPDATED_EVENT, handleMatchesUpdated);
+
+    return () => {
+      window.removeEventListener(MATCHES_UPDATED_EVENT, handleMatchesUpdated);
+    };
+  }, []);
 
   useEffect(() => {
     loadDashboard().catch(() => undefined);

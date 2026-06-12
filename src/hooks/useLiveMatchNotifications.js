@@ -4,7 +4,7 @@ import { matchService } from "../services/matchService";
 import { getSafeErrorMessage } from "../utils/errors";
 import { detectLiveMatchEvents } from "../utils/liveMatchEvents";
 
-const POLL_INTERVAL_MS = 30000;
+const POLL_INTERVAL_MS = 20000;
 const MATCHES_UPDATED_EVENT = "wc26:matches-updated";
 
 const showGoalToast = ({ match, team }) => {
