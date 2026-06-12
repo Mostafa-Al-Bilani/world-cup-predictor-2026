@@ -85,6 +85,7 @@ export function MyPredictionsPage() {
     championPrediction: contextChampionPrediction,
     refreshChampionPrediction,
     user,
+    profile,
   } = useAuth();
 
   const [matches, setMatches] = useState([]);
@@ -175,10 +176,14 @@ export function MyPredictionsPage() {
       ({ match }) => normalizeStatus(match.status) === "finished",
     ).length;
 
-    const totalPoints = predictions.reduce(
+    const matchPoints = predictions.reduce(
       (sum, prediction) => sum + getPredictionTotalPoints(prediction),
       0,
     );
+
+    // Same source as the dashboard so both pages report one total,
+    // including champion and bracket points.
+    const totalPoints = profile?.total_points ?? profile?.points ?? matchPoints;
 
     const correct = predictions.filter(
       (prediction) => prediction.is_correct === true,
@@ -197,7 +202,7 @@ export function MyPredictionsPage() {
       correct,
       exact,
     };
-  }, [allRows, predictions]);
+  }, [allRows, predictions, profile]);
 
   if (loading) {
     return <LoadingSpinner label="Loading your predictions" />;
