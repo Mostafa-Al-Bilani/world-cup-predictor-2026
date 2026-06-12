@@ -22,6 +22,13 @@ const formatStatusDetail = (statusDetail) => {
 
   if (!text) return "";
 
+  const upperText = text.toUpperCase();
+
+  if (upperText === "HT") return "Half time";
+  if (upperText === "FT") return "Full time";
+  if (upperText === "ET") return "Extra time";
+  if (upperText === "PEN") return "Penalties";
+
   if (/\d/.test(text) && text.includes("'")) {
     return `${text} min`;
   }
@@ -32,17 +39,24 @@ const formatStatusDetail = (statusDetail) => {
 export const getLivePhaseLabel = (match) => {
   const status = normalizeMatchDisplayStatus(match?.status);
   const statusDetail = formatStatusDetail(match?.status_detail);
+  const normalizedDetail = String(match?.status_detail ?? "")
+    .trim()
+    .toUpperCase();
+
+  if (status === "finished") {
+    return statusDetail || "Full time";
+  }
 
   if (status === "extra_time") {
-    return statusDetail || "ET";
+    return statusDetail || "Extra time";
   }
 
   if (status === "penalties" || status === "penalty_shootout") {
-    return statusDetail || "PEN";
+    return statusDetail || "Penalties";
   }
 
-  if (status === "halftime") {
-    return statusDetail || "HT";
+  if (status === "halftime" || normalizedDetail === "HT") {
+    return "Half time";
   }
 
   if (status === "live") {
