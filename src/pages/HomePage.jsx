@@ -21,6 +21,7 @@ import { profileService } from "../services/profileService";
 import { supabase } from "../services/supabaseClient";
 import { formatDateTime, getTimeRemaining, isMatchLocked } from "../utils/date";
 import { getSafeErrorMessage } from "../utils/errors";
+import { hasRealTeams, isMatchOpenForPrediction } from "../utils/matches";
 import { getPredictionTotalPoints } from "../utils/predictions";
 import { MATCHES_UPDATED_EVENT } from "../hooks/useLiveMatchNotifications";
 
@@ -50,30 +51,6 @@ const features = [
     icon: Users,
   },
 ];
-
-function isPlaceholderTeamName(teamName) {
-  const text = String(teamName ?? "")
-    .trim()
-    .toLowerCase();
-
-  return (
-    !text ||
-    text === "tbd" ||
-    text.includes("group ") ||
-    text.includes("winner") ||
-    text.includes("runner-up") ||
-    text.includes("runner up") ||
-    text.includes("2nd place") ||
-    text.includes("3rd place") ||
-    text.includes("third place")
-  );
-}
-
-function hasRealTeams(match) {
-  return (
-    !isPlaceholderTeamName(match.team_a) && !isPlaceholderTeamName(match.team_b)
-  );
-}
 
 const normalizeStatus = (status) =>
   String(status ?? "")
@@ -176,12 +153,7 @@ export function HomePage() {
   const upcomingMatches = useMemo(
     () =>
       matches
-        .filter(hasRealTeams)
-        .filter(
-          (match) =>
-            normalizeStatus(match.status) === "upcoming" &&
-            new Date(match.match_date).getTime() > tick,
-        )
+        .filter((match) => isMatchOpenForPrediction(match, tick))
         .sort((a, b) => new Date(a.match_date) - new Date(b.match_date)),
     [matches, tick],
   );
