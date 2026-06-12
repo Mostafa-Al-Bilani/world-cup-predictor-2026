@@ -5,6 +5,7 @@ import { PredictionButton } from "./PredictionButton";
 import { StatusBadge } from "./StatusBadge";
 import { TeamFlag } from "./TeamFlag";
 import { formatDateTime, isMatchLocked } from "../utils/date";
+import { isPlaceholderTeamName } from "../utils/matches";
 import {
   getLivePhaseClassName,
   getLivePhaseLabel,
@@ -19,24 +20,6 @@ import {
   getPredictionTotalPoints,
   matchAllowsDraw,
 } from "../utils/predictions";
-
-function isPlaceholderTeamName(teamName) {
-  const text = String(teamName ?? "")
-    .trim()
-    .toLowerCase();
-
-  return (
-    !text ||
-    text === "tbd" ||
-    text.includes("group ") ||
-    text.includes("winner") ||
-    text.includes("runner-up") ||
-    text.includes("runner up") ||
-    text.includes("2nd place") ||
-    text.includes("3rd place") ||
-    text.includes("third place")
-  );
-}
 
 function getPredictionLockMessage({ match, normalizedStatus }) {
   if (
