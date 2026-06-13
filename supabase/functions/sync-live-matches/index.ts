@@ -383,34 +383,41 @@ function shouldSyncMatch(match: MatchRow, now: Date) {
 }
 
 async function fetchEspnEventsForMatches(matches: MatchRow[]) {
-  const dates = [
-    ...new Set(matches.map((match) => toEspnDate(match.match_date))),
-  ];
+  const kickoffTimes = matches
+    .map((match) => new Date(match.match_date).getTime())
+    .filter((time) => Number.isFinite(time));
 
-  const events: EspnEvent[] = [];
+  if (!kickoffTimes.length) return [];
 
-  for (const date of dates) {
-    const url = new URL(ESPN_SCOREBOARD_URL);
-    url.searchParams.set("dates", date);
-    url.searchParams.set("limit", "200");
+  // ESPN groups scoreboard events by US local date, not UTC, so an exact
+  // UTC date query can miss matches near midnight. Query a range padded
+  // by one day on each side instead.
+  const dayMs = 24 * 60 * 60 * 1000;
+  const rangeStart = new Date(Math.min(...kickoffTimes) - dayMs);
+  const rangeEnd = new Date(Math.max(...kickoffTimes) + dayMs);
 
-    const response = await fetch(url, {
-      headers: {
-        accept: "application/json",
-      },
-    });
+  const url = new URL(ESPN_SCOREBOARD_URL);
+  url.searchParams.set(
+    "dates",
+    `${toEspnDate(rangeStart)}-${toEspnDate(rangeEnd)}`,
+  );
+  url.searchParams.set("limit", "200");
 
-    if (!response.ok) {
-      throw new Error(
-        `ESPN API error ${response.status}: ${await response.text()}`,
-      );
-    }
+  const response = await fetch(url, {
+    headers: {
+      accept: "application/json",
+    },
+  });
 
-    const body = (await response.json()) as EspnScoreboardResponse;
-    events.push(...(body.events ?? []));
+  if (!response.ok) {
+    throw new Error(
+      `ESPN API error ${response.status}: ${await response.text()}`,
+    );
   }
 
-  return dedupeEvents(events);
+  const body = (await response.json()) as EspnScoreboardResponse;
+
+  return dedupeEvents(body.events ?? []);
 }
 
 function findEspnEventForMatch(match: MatchRow, events: EspnEvent[]) {
@@ -714,7 +721,7 @@ function parseScore(score: string | undefined) {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
-function toEspnDate(dateValue: string) {
+function toEspnDate(dateValue: string | Date) {
   const date = new Date(dateValue);
   const year = date.getUTCFullYear();
   const month = String(date.getUTCMonth() + 1).padStart(2, "0");
