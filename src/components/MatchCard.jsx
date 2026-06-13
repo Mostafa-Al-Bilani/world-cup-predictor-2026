@@ -7,6 +7,7 @@ import { TeamFlag } from "./TeamFlag";
 import { formatDateTime, isMatchLocked } from "../utils/date";
 import { isPlaceholderTeamName } from "../utils/matches";
 import {
+  getLiveGoalEvents,
   getLivePhaseClassName,
   getLivePhaseLabel,
   normalizeMatchDisplayStatus,
@@ -218,6 +219,7 @@ export function MatchCard({
   const canDraw = matchAllowsDraw(match);
   const predictionStatus = getPredictionStatus(match, prediction);
   const livePhaseLabel = getLivePhaseLabel(match);
+  const liveGoalEvents = getLiveGoalEvents(match);
 
   const [draft, setDraft] = useState({
     result: "",
@@ -310,16 +312,35 @@ export function MatchCard({
         </div>
 
         {shouldShowScoreBox(match) ? (
-          <div className="mt-5 rounded-lg border border-white/10 bg-white/5 px-4 py-3 text-center text-2xl font-black">
-            {match.team_a_score ?? "-"} : {match.team_b_score ?? "-"}
-            {livePhaseLabel ? (
-              <span
-                className={`ml-2 align-middle text-xs font-bold ${getLivePhaseClassName(
-                  match,
-                )}`}
-              >
-                {livePhaseLabel}
-              </span>
+          <div className="mt-5 rounded-lg border border-white/10 bg-white/5 px-4 py-3 text-center">
+            <p className="text-2xl font-black">
+              {match.team_a_score ?? "-"} : {match.team_b_score ?? "-"}
+              {livePhaseLabel ? (
+                <span
+                  className={`ml-2 align-middle text-xs font-bold ${getLivePhaseClassName(
+                    match,
+                  )}`}
+                >
+                  {livePhaseLabel}
+                </span>
+              ) : null}
+            </p>
+
+            {liveGoalEvents.length ? (
+              <div className="mt-3 grid grid-cols-2 gap-x-4 gap-y-1 border-t border-white/10 pt-3 text-xs text-slate-300">
+                <GoalEventList
+                  events={liveGoalEvents.filter(
+                    (event) => event.side === "team_a",
+                  )}
+                />
+
+                <GoalEventList
+                  align="right"
+                  events={liveGoalEvents.filter(
+                    (event) => event.side === "team_b",
+                  )}
+                />
+              </div>
             ) : null}
           </div>
         ) : null}
@@ -486,6 +507,29 @@ function ScoreInput({ label, value, disabled, onChange }) {
         placeholder="-"
       />
     </label>
+  );
+}
+
+function GoalEventList({ events, align = "left" }) {
+  return (
+    <ul
+      className={`min-w-0 space-y-1 ${align === "right" ? "text-right" : "text-left"}`}
+    >
+      {events.map((event, index) => (
+        <li key={index} className="truncate font-semibold">
+          {event.minute ? (
+            <span className="text-emerald-200">{event.minute} </span>
+          ) : null}
+          {event.player ?? "Goal"}
+          {event.ownGoal ? (
+            <span className="text-slate-400"> (o.g.)</span>
+          ) : null}
+          {event.penalty ? (
+            <span className="text-slate-400"> (pen.)</span>
+          ) : null}
+        </li>
+      ))}
+    </ul>
   );
 }
 

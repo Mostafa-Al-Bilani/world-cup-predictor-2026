@@ -17,9 +17,19 @@ type MatchRow = {
   status_detail: string | null;
   halftime_team_a_score: number | null;
   halftime_team_b_score: number | null;
+  goal_events: GoalEvent[] | null;
   provider_name: string | null;
   provider_fixture_id: string | null;
   last_synced_at: string | null;
+};
+
+type GoalEvent = {
+  side: "team_a" | "team_b" | null;
+  minute: string | null;
+  clock: number | null;
+  player: string | null;
+  own_goal: boolean;
+  penalty: boolean;
 };
 
 type EspnScoreboardResponse = {
@@ -56,7 +66,31 @@ type EspnEvent = {
       };
     };
     competitors?: EspnCompetitor[];
+    details?: EspnPlayDetail[];
     status?: EspnEvent["status"];
+  }>;
+};
+
+type EspnPlayDetail = {
+  type?: {
+    id?: string;
+    text?: string;
+  };
+  clock?: {
+    value?: number;
+    displayValue?: string;
+  };
+  team?: {
+    id?: string;
+  };
+  scoringPlay?: boolean;
+  ownGoal?: boolean;
+  penaltyKick?: boolean;
+  shootout?: boolean;
+  athletesInvolved?: Array<{
+    displayName?: string;
+    shortName?: string;
+    fullName?: string;
   }>;
 };
 
@@ -81,6 +115,7 @@ type MatchUpdatePayload = {
   result: "team_a" | "draw" | "team_b" | null;
   elapsed: number | null;
   status_detail: string | null;
+  goal_events: GoalEvent[];
   provider_name: string;
   provider_fixture_id: string | null;
   venue: string | null;
@@ -299,6 +334,7 @@ async function getCandidateMatches(now: Date): Promise<MatchRow[]> {
         "city",
         "elapsed",
         "status_detail",
+        "goal_events",
         "halftime_team_a_score",
         "halftime_team_b_score",
         "provider_name",
@@ -450,6 +486,7 @@ function mapEspnEventToMatchUpdate(
     result,
     elapsed: getElapsed(eventStatus),
     status_detail: getStatusDetail(eventStatus),
+    goal_events: extractGoalEvents(event, reversed),
     provider_name: PROVIDER_NAME,
     provider_fixture_id: event.id ?? match.provider_fixture_id ?? null,
     venue,
@@ -514,6 +551,59 @@ function getElapsed(status: EspnEvent["status"]) {
   return null;
 }
 
+function extractGoalEvents(event: EspnEvent, reversed: boolean): GoalEvent[] {
+  const competition = event.competitions?.[0];
+  const details = competition?.details ?? [];
+  const competitors = competition?.competitors ?? [];
+
+  const homeTeamId = String(
+    getCompetitorByHomeAway(competitors, "home")?.team?.id ?? "",
+  );
+  const awayTeamId = String(
+    getCompetitorByHomeAway(competitors, "away")?.team?.id ?? "",
+  );
+
+  const goals: GoalEvent[] = [];
+
+  for (const detail of details) {
+    // Shootout kicks are excluded: they are not regular goals and the
+    // shootout outcome is already covered by the penalties status.
+    if (detail?.scoringPlay !== true || detail.shootout === true) continue;
+
+    const teamId = String(detail.team?.id ?? "");
+
+    let side: GoalEvent["side"] = null;
+    if (teamId && teamId === homeTeamId) {
+      side = reversed ? "team_b" : "team_a";
+    } else if (teamId && teamId === awayTeamId) {
+      side = reversed ? "team_a" : "team_b";
+    }
+
+    const athlete = detail.athletesInvolved?.[0];
+
+    goals.push({
+      side,
+      minute: detail.clock?.displayValue ?? null,
+      clock:
+        typeof detail.clock?.value === "number" &&
+        Number.isFinite(detail.clock.value)
+          ? detail.clock.value
+          : null,
+      player:
+        athlete?.displayName ??
+        athlete?.shortName ??
+        athlete?.fullName ??
+        null,
+      own_goal: detail.ownGoal === true,
+      penalty: detail.penaltyKick === true,
+    });
+  }
+
+  goals.sort((a, b) => (a.clock ?? 0) - (b.clock ?? 0));
+
+  return goals;
+}
+
 function getStatusDetail(status: EspnEvent["status"]) {
   return (
     status?.type?.shortDetail ??
@@ -548,6 +638,8 @@ function hasMeaningfulMatchChange(
     match.result !== payload.result ||
     match.elapsed !== payload.elapsed ||
     match.status_detail !== payload.status_detail ||
+    JSON.stringify(match.goal_events ?? []) !==
+      JSON.stringify(payload.goal_events ?? []) ||
     match.provider_name !== payload.provider_name ||
     String(match.provider_fixture_id ?? "") !==
       String(payload.provider_fixture_id ?? "") ||

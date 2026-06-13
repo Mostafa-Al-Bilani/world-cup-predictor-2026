@@ -2,8 +2,10 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import {
+  getLiveGoalEvents,
   getLivePhaseClassName,
   getLivePhaseLabel,
+  isMatchInLivePhase,
   normalizeMatchDisplayStatus,
   shouldShowScoreBox,
 } from "../src/utils/matchDisplay.js";
@@ -62,6 +64,103 @@ test("returns ET label for extra time", () => {
 test("returns PEN label for penalties", () => {
   assert.equal(getLivePhaseLabel({ status: "penalties" }), "PEN");
   assert.equal(getLivePhaseLabel({ status: "penalty_shootout" }), "PEN");
+});
+
+test("detects live phases", () => {
+  assert.equal(isMatchInLivePhase({ status: "live" }), true);
+  assert.equal(isMatchInLivePhase({ status: "Half Time" }), false);
+  assert.equal(isMatchInLivePhase({ status: "halftime" }), true);
+  assert.equal(isMatchInLivePhase({ status: "extra_time" }), true);
+  assert.equal(isMatchInLivePhase({ status: "penalty-shootout" }), true);
+  assert.equal(isMatchInLivePhase({ status: "upcoming" }), false);
+  assert.equal(isMatchInLivePhase({ status: "finished" }), false);
+});
+
+test("returns normalized goal events for live matches", () => {
+  const events = getLiveGoalEvents({
+    status: "live",
+    goal_events: [
+      {
+        side: "team_a",
+        minute: "21'",
+        clock: 1228,
+        player: "Jovo Lukic",
+        own_goal: false,
+        penalty: false,
+      },
+      {
+        side: "team_b",
+        minute: "45'+2'",
+        clock: 2820,
+        player: "Alphonso Davies",
+        own_goal: false,
+        penalty: true,
+      },
+    ],
+  });
+
+  assert.deepEqual(events, [
+    {
+      side: "team_a",
+      minute: "21'",
+      player: "Jovo Lukic",
+      ownGoal: false,
+      penalty: false,
+    },
+    {
+      side: "team_b",
+      minute: "45'+2'",
+      player: "Alphonso Davies",
+      ownGoal: false,
+      penalty: true,
+    },
+  ]);
+});
+
+test("returns no goal events for non-live matches", () => {
+  const goalEvents = [
+    { side: "team_a", minute: "10'", player: "Someone" },
+  ];
+
+  assert.deepEqual(
+    getLiveGoalEvents({ status: "finished", goal_events: goalEvents }),
+    [],
+  );
+  assert.deepEqual(
+    getLiveGoalEvents({ status: "upcoming", goal_events: goalEvents }),
+    [],
+  );
+});
+
+test("ignores malformed goal events", () => {
+  const events = getLiveGoalEvents({
+    status: "live",
+    goal_events: [
+      null,
+      "bad",
+      { side: "unknown", minute: "10'", player: "Lost Side" },
+      { side: "team_a", minute: "", player: "  " },
+      { side: "team_b", minute: "78'", player: null },
+    ],
+  });
+
+  assert.deepEqual(events, [
+    {
+      side: "team_b",
+      minute: "78'",
+      player: null,
+      ownGoal: false,
+      penalty: false,
+    },
+  ]);
+});
+
+test("returns no goal events when column is missing", () => {
+  assert.deepEqual(getLiveGoalEvents({ status: "live" }), []);
+  assert.deepEqual(
+    getLiveGoalEvents({ status: "live", goal_events: null }),
+    [],
+  );
 });
 
 test("returns correct phase class names", () => {

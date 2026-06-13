@@ -17,6 +17,41 @@ export const shouldShowScoreBox = (match) => {
   return scoreVisibleStatuses.has(normalizeMatchDisplayStatus(match?.status));
 };
 
+export const livePhaseStatuses = new Set([
+  "live",
+  "halftime",
+  "extra_time",
+  "penalties",
+  "penalty_shootout",
+]);
+
+export const isMatchInLivePhase = (match) =>
+  livePhaseStatuses.has(normalizeMatchDisplayStatus(match?.status));
+
+const readText = (value) => {
+  if (typeof value !== "string") return "";
+  return value.trim();
+};
+
+// Returns the synced goal events (scorer + minute) for a match, but only
+// while it is in a live phase. Returns [] otherwise or when no data exists.
+export const getLiveGoalEvents = (match) => {
+  if (!isMatchInLivePhase(match)) return [];
+  if (!Array.isArray(match?.goal_events)) return [];
+
+  return match.goal_events
+    .filter((event) => event && typeof event === "object")
+    .map((event) => ({
+      side:
+        event.side === "team_a" || event.side === "team_b" ? event.side : null,
+      minute: readText(event.minute) || null,
+      player: readText(event.player) || null,
+      ownGoal: event.own_goal === true,
+      penalty: event.penalty === true,
+    }))
+    .filter((event) => event.side && (event.player || event.minute));
+};
+
 const formatStatusDetail = (statusDetail) => {
   const text = String(statusDetail ?? "").trim();
 

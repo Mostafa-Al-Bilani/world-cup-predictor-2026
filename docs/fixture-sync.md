@@ -37,7 +37,7 @@ The function:
 - skips finished, cancelled, and postponed fixtures;
 - fetches events by date;
 - reconciles stored matches with provider events;
-- updates status, scores, result, elapsed time, status detail, venue, city, provider metadata, and sync time;
+- updates status, scores, result, elapsed time, status detail, goal events (scorer, minute, own-goal and penalty flags stored in the `goal_events` jsonb column), venue, city, provider metadata, and sync time;
 - recalculates finished-match points;
 - refreshes bracket scoring;
 - writes a synchronization log.

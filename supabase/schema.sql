@@ -31,6 +31,7 @@ create table if not exists public.matches (
   host_country text,
   elapsed integer,
   status_detail text,
+  goal_events jsonb,
   halftime_team_a_score integer,
   halftime_team_b_score integer,
   external_ref text,
@@ -52,6 +53,7 @@ alter table public.matches add column if not exists provider_fixture_id text;
 alter table public.matches add column if not exists last_synced_at timestamptz;
 alter table public.matches add column if not exists elapsed integer;
 alter table public.matches add column if not exists status_detail text;
+alter table public.matches add column if not exists goal_events jsonb;
 alter table public.matches add column if not exists halftime_team_a_score integer;
 alter table public.matches add column if not exists halftime_team_b_score integer;
 
