@@ -44,8 +44,19 @@ export function TeamPicker({ disabled = false, helperText, label, name, onChange
       }
     };
 
+    const closeOnEscape = (event) => {
+      if (event.key === 'Escape') {
+        setOpen(false);
+      }
+    };
+
     document.addEventListener('mousedown', closeOnOutsideClick);
-    return () => document.removeEventListener('mousedown', closeOnOutsideClick);
+    document.addEventListener('keydown', closeOnEscape);
+
+    return () => {
+      document.removeEventListener('mousedown', closeOnOutsideClick);
+      document.removeEventListener('keydown', closeOnEscape);
+    };
   }, []);
 
   useEffect(() => {
@@ -83,6 +94,8 @@ export function TeamPicker({ disabled = false, helperText, label, name, onChange
       <div ref={dropdownRef} className="relative mt-2">
         <button
           type="button"
+          aria-haspopup="listbox"
+          aria-expanded={open}
           disabled={disabled || !teams.length}
           onClick={toggleOpen}
           className="flex w-full items-center justify-between gap-3 rounded-lg border border-white/10 bg-slate-900 px-4 py-3 text-left text-white outline-none transition hover:border-emerald-300/60 focus:border-emerald-300 disabled:cursor-not-allowed disabled:opacity-60"
@@ -110,6 +123,7 @@ export function TeamPicker({ disabled = false, helperText, label, name, onChange
                 autoFocus
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
+                aria-label="Search teams"
                 className="w-full bg-transparent py-1 text-sm text-white outline-none placeholder:text-slate-500"
                 placeholder="Search teams"
               />

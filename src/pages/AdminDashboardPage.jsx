@@ -375,6 +375,7 @@ export function AdminDashboardPage() {
               <input
                 value={matchSearch}
                 onChange={(event) => setMatchSearch(event.target.value)}
+                aria-label="Search team, venue, stage, or match number"
                 className="rounded-lg border border-white/10 bg-white/5 px-4 py-3 text-sm text-white outline-none focus:border-emerald-300"
                 placeholder="Search team, venue, stage, or match number"
               />

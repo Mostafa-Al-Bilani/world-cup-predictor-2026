@@ -234,6 +234,7 @@ export function ScoreboardPage() {
           <input
             value={search}
             onChange={(event) => setSearch(event.target.value)}
+            aria-label="Search username"
             className="rounded-lg border border-white/10 bg-white/5 px-4 py-3 text-sm text-white outline-none placeholder:text-slate-500 focus:border-emerald-300"
             placeholder="Search username"
           />

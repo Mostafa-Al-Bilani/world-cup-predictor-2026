@@ -224,6 +224,7 @@ export function GroupsPage() {
               onChange={(event) => setInviteCode(event.target.value.toUpperCase())}
               maxLength={8}
               pattern="[A-Fa-f0-9]{8}"
+              aria-label="Group invite code"
               className="mt-4 w-full rounded-lg border border-white/10 bg-white/5 px-4 py-3 text-sm font-black uppercase tracking-[0.18em] text-white outline-none focus:border-emerald-300"
               placeholder="A1B2C3D4"
             />

@@ -302,6 +302,7 @@ export function MatchesPage() {
             name="search"
             value={filters.search}
             onChange={updateFilter}
+            aria-label="Search team or city"
             className="rounded-lg border border-white/10 bg-slate-950 px-4 py-3 text-sm text-white outline-none focus:border-emerald-300"
             placeholder="Search team or city"
           />

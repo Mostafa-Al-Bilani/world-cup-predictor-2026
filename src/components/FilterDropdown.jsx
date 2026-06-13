@@ -21,10 +21,18 @@ export function FilterDropdown({
       }
     };
 
+    const handleKeyDown = (event) => {
+      if (event.key === 'Escape') {
+        setOpen(false);
+      }
+    };
+
     document.addEventListener('mousedown', handleClickOutside);
+    document.addEventListener('keydown', handleKeyDown);
 
     return () => {
       document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('keydown', handleKeyDown);
     };
   }, []);
 
@@ -43,6 +51,8 @@ export function FilterDropdown({
     <div ref={containerRef} className={`relative ${className}`}>
       <button
         type="button"
+        aria-haspopup="listbox"
+        aria-expanded={open}
         onClick={() => setOpen((current) => !current)}
         className="flex w-full items-center justify-between rounded-lg border border-emerald-300/40 bg-slate-950 px-4 py-3 text-left text-sm font-semibold text-white outline-none transition hover:border-emerald-300 focus:border-emerald-300"
       >
