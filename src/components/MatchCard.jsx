@@ -185,6 +185,27 @@ export function MatchCard({
 }) {
   const normalizedStatus = normalizeMatchDisplayStatus(match.status);
 
+  const [, setLockRefreshCount] = useState(0);
+
+  // Re-render exactly at kickoff so the card locks on time instead of
+  // waiting for the next match poll.
+  useEffect(() => {
+    if (normalizedStatus !== "upcoming") return undefined;
+
+    const kickoffTime = new Date(match.match_date).getTime();
+    if (!Number.isFinite(kickoffTime)) return undefined;
+
+    const delay = kickoffTime - Date.now() + 1000;
+    if (delay <= 0) return undefined;
+
+    const timeoutId = window.setTimeout(
+      () => setLockRefreshCount((count) => count + 1),
+      Math.min(delay, 2_147_000_000),
+    );
+
+    return () => window.clearTimeout(timeoutId);
+  }, [match.match_date, normalizedStatus]);
+
   const hasPlaceholderTeams =
     isPlaceholderTeamName(match.team_a) || isPlaceholderTeamName(match.team_b);
 
