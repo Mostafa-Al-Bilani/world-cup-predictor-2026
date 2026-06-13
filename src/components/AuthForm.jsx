@@ -63,12 +63,20 @@ export function AuthForm({ mode }) {
 
     if (!shouldFocusAuth) return undefined;
 
+    let timeoutId = null;
+
     const frameId = window.requestAnimationFrame(() => {
       formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      window.setTimeout(() => firstInputRef.current?.focus({ preventScroll: true }), 350);
+      timeoutId = window.setTimeout(
+        () => firstInputRef.current?.focus({ preventScroll: true }),
+        350,
+      );
     });
 
-    return () => window.cancelAnimationFrame(frameId);
+    return () => {
+      window.cancelAnimationFrame(frameId);
+      if (timeoutId !== null) window.clearTimeout(timeoutId);
+    };
   }, [location.state?.scrollToAuth, mode]);
 
   const updateForm = (event) => {

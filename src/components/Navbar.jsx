@@ -26,10 +26,37 @@ const authenticatedExtraNavItems = [
 export function Navbar() {
   const [open, setOpen] = useState(false);
   const [missingPredictionCount, setMissingPredictionCount] = useState(0);
+  const [signingOut, setSigningOut] = useState(false);
 
   const { user, isAuthenticated, isAdmin, profile, signOut } = useAuth();
 
   const username = profile?.username ?? user?.email?.split("@")[0] ?? "Player";
+
+  const handleSignOut = async () => {
+    if (signingOut) return;
+
+    setSigningOut(true);
+
+    try {
+      await signOut();
+    } finally {
+      setSigningOut(false);
+      setOpen(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!open) return undefined;
+
+    const closeOnEscape = (event) => {
+      if (event.key === "Escape") {
+        setOpen(false);
+      }
+    };
+
+    document.addEventListener("keydown", closeOnEscape);
+    return () => document.removeEventListener("keydown", closeOnEscape);
+  }, [open]);
 
   const visibleNavItems = useMemo(
     () =>
@@ -184,10 +211,11 @@ export function Navbar() {
 
               <button
                 type="button"
-                onClick={signOut}
-                className="rounded-full border border-white/15 px-4 py-2 text-sm font-bold text-white transition hover:bg-white hover:text-slate-950"
+                disabled={signingOut}
+                onClick={handleSignOut}
+                className="rounded-full border border-white/15 px-4 py-2 text-sm font-bold text-white transition hover:bg-white hover:text-slate-950 disabled:cursor-not-allowed disabled:opacity-60"
               >
-                Log out
+                {signingOut ? "Logging out..." : "Log out"}
               </button>
             </>
           ) : (
@@ -262,13 +290,11 @@ export function Navbar() {
               {isAuthenticated ? (
                 <button
                   type="button"
-                  onClick={() => {
-                    signOut();
-                    setOpen(false);
-                  }}
-                  className="w-full rounded-full border border-white/15 px-4 py-2 text-sm font-bold text-white"
+                  disabled={signingOut}
+                  onClick={handleSignOut}
+                  className="w-full rounded-full border border-white/15 px-4 py-2 text-sm font-bold text-white disabled:cursor-not-allowed disabled:opacity-60"
                 >
-                  Log out
+                  {signingOut ? "Logging out..." : "Log out"}
                 </button>
               ) : (
                 <div className="grid grid-cols-2 gap-2">
