@@ -3,8 +3,11 @@ import toast from "react-hot-toast";
 import { matchService } from "../services/matchService";
 import { getSafeErrorMessage } from "../utils/errors";
 import { detectLiveMatchEvents } from "../utils/liveMatchEvents";
+import {
+  getNextLivePollDelay,
+  mergeMatchUpdates,
+} from "../utils/livePolling";
 
-const POLL_INTERVAL_MS = 20000;
 const MATCHES_UPDATED_EVENT = "wc26:matches-updated";
 
 const showGoalToast = ({ match, team }) => {
@@ -35,92 +38,143 @@ const showPhaseToast = ({ match, type }) => {
   }
 };
 
+const dispatchMatchesUpdated = (matches) => {
+  window.dispatchEvent(
+    new CustomEvent(MATCHES_UPDATED_EVENT, {
+      detail: { matches },
+    }),
+  );
+};
+
+const showDetectedEvents = ({ previousMatches, updatedMatches }) => {
+  if (!previousMatches?.length || !updatedMatches?.length) return;
+
+  const previousById = new Map(
+    previousMatches.map((match) => [match.id, match]),
+  );
+
+  updatedMatches.forEach((nextMatch) => {
+    const previousMatch = previousById.get(nextMatch.id);
+    if (!previousMatch) return;
+
+    const events = detectLiveMatchEvents({
+      previousMatch,
+      nextMatch,
+    });
+
+    events.forEach((event) => {
+      if (event.type === "goal") {
+        showGoalToast({
+          match: event.match,
+          team: event.team,
+        });
+        return;
+      }
+
+      showPhaseToast({
+        match: event.match,
+        type: event.type,
+      });
+    });
+  });
+};
+
 export function useLiveMatchNotifications() {
   const previousMatchesRef = useRef(null);
   const pollingRef = useRef(false);
 
   useEffect(() => {
     let cancelled = false;
-    let intervalId = null;
+    let timeoutId = null;
 
-    const pollMatches = async () => {
+    const clearScheduledPoll = () => {
+      if (timeoutId !== null) {
+        window.clearTimeout(timeoutId);
+        timeoutId = null;
+      }
+    };
+
+    const scheduleNextPoll = (matches) => {
+      if (cancelled) return;
+
+      clearScheduledPoll();
+
+      const delay = getNextLivePollDelay(matches);
+
+      timeoutId = window.setTimeout(() => {
+        pollMatches();
+      }, delay);
+    };
+
+    const pollMatches = async ({ forceFullRefresh = false } = {}) => {
       if (cancelled || pollingRef.current) return;
-      if (document.visibilityState !== "visible") return;
+
+      if (document.visibilityState !== "visible") {
+        clearScheduledPoll();
+        return;
+      }
 
       pollingRef.current = true;
 
       try {
-        const nextMatches = await matchService.getMatches();
+        const previousMatches = previousMatchesRef.current;
+        const shouldLoadAllMatches =
+          forceFullRefresh || !Array.isArray(previousMatches);
+
+        const updatedMatches = shouldLoadAllMatches
+          ? await matchService.getMatches()
+          : await matchService.getMatchesForLivePolling();
 
         if (cancelled) return;
 
-        window.dispatchEvent(
-          new CustomEvent(MATCHES_UPDATED_EVENT, {
-            detail: { matches: nextMatches },
-          }),
-        );
+        const nextMatches = shouldLoadAllMatches
+          ? updatedMatches
+          : mergeMatchUpdates(previousMatches, updatedMatches);
 
-        const previousMatches = previousMatchesRef.current;
+        dispatchMatchesUpdated(nextMatches);
 
-        if (!previousMatches) {
-          previousMatchesRef.current = nextMatches;
-          return;
+        if (!shouldLoadAllMatches) {
+          showDetectedEvents({
+            previousMatches,
+            updatedMatches,
+          });
         }
 
-        const previousById = new Map(
-          previousMatches.map((match) => [match.id, match]),
-        );
-
-        nextMatches.forEach((nextMatch) => {
-          const previousMatch = previousById.get(nextMatch.id);
-          if (!previousMatch) return;
-
-          const events = detectLiveMatchEvents({
-            previousMatch,
-            nextMatch,
-          });
-
-          events.forEach((event) => {
-            if (event.type === "goal") {
-              showGoalToast({
-                match: event.match,
-                team: event.team,
-              });
-              return;
-            }
-
-            showPhaseToast({
-              match: event.match,
-              type: event.type,
-            });
-          });
-        });
-
         previousMatchesRef.current = nextMatches;
+        scheduleNextPoll(nextMatches);
       } catch (error) {
         console.warn(
           getSafeErrorMessage(error, "Could not poll live match updates."),
         );
+
+        scheduleNextPoll(previousMatchesRef.current ?? []);
       } finally {
         pollingRef.current = false;
       }
     };
 
-    pollMatches();
-    intervalId = window.setInterval(pollMatches, POLL_INTERVAL_MS);
+    pollMatches({ forceFullRefresh: true });
 
     const handleVisibilityChange = () => {
       if (document.visibilityState === "visible") {
-        pollMatches();
+        pollMatches({
+          forceFullRefresh: !Array.isArray(previousMatchesRef.current),
+        });
+        return;
       }
+
+      clearScheduledPoll();
     };
 
     document.addEventListener("visibilitychange", handleVisibilityChange);
 
     return () => {
       cancelled = true;
-      window.clearInterval(intervalId);
-      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      clearScheduledPoll();
+      document.removeEventListener(
+        "visibilitychange",
+        handleVisibilityChange,
+      );
     };
   }, []);
 }
