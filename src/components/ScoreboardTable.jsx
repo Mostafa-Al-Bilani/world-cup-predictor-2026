@@ -41,8 +41,8 @@ export function ScoreboardTable({ users, currentUserId }) {
                   <td className="px-5 py-4 text-slate-300">{user.exact_score_points ?? 0}</td>
                   <td className="px-5 py-4 text-slate-300">{user.champion_points ?? 0}</td>
                   <td className="px-5 py-4 text-slate-300">{user.bracket_points ?? 0}</td>
-                  <td className="px-5 py-4 text-slate-300">{user.correct_predictions}</td>
-                  <td className="px-5 py-4 text-slate-300">{user.total_predictions}</td>
+                  <td className="px-5 py-4 text-slate-300">{user.correct_predictions ?? 0}</td>
+                  <td className="px-5 py-4 text-slate-300">{user.total_predictions ?? 0}</td>
                   <td className="px-5 py-4 text-slate-300">{getAccuracy(user)}%</td>
                 </tr>
               );
