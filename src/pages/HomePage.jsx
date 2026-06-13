@@ -21,7 +21,7 @@ import { matchService } from "../services/matchService";
 import { predictionService } from "../services/predictionService";
 import { profileService } from "../services/profileService";
 import { supabase } from "../services/supabaseClient";
-import { formatDateTime, getTimeRemaining, isMatchLocked } from "../utils/date";
+import { formatDateTime, getTimeRemaining } from "../utils/date";
 import { getSafeErrorMessage } from "../utils/errors";
 import { hasRealTeams, isMatchOpenForPrediction } from "../utils/matches";
 import { getPredictionTotalPoints } from "../utils/predictions";
@@ -218,7 +218,7 @@ export function HomePage() {
       return;
     }
 
-    if (isMatchLocked(match) || normalizeStatus(match.status) !== "upcoming") {
+    if (!isMatchOpenForPrediction(match)) {
       toast.error("Predictions are locked for this match.");
       return;
     }

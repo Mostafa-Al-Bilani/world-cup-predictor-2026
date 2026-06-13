@@ -9,8 +9,9 @@ import { useAuth } from "../context/AuthContext";
 import { MATCHES_UPDATED_EVENT } from "../hooks/useLiveMatchNotifications";
 import { matchService } from "../services/matchService";
 import { predictionService } from "../services/predictionService";
-import { formatDate, isMatchLocked } from "../utils/date";
+import { formatDate } from "../utils/date";
 import { getSafeErrorMessage } from "../utils/errors";
+import { isMatchOpenForPrediction } from "../utils/matches";
 
 const statusFilterOptions = [
   { value: "upcoming", label: "Upcoming" },
@@ -198,6 +199,12 @@ export function MatchesPage() {
   useEffect(() => {
     if (loading || !targetMatchId || hasScrolledToTarget) return;
 
+    // Stop retrying when the deep-linked match does not exist.
+    if (matches.length && !matches.some((match) => match.id === targetMatchId)) {
+      setHasScrolledToTarget(true);
+      return;
+    }
+
     const timeoutId = window.setTimeout(() => {
       const element = document.getElementById(`match-${targetMatchId}`);
 
@@ -216,7 +223,7 @@ export function MatchesPage() {
     }, 350);
 
     return () => window.clearTimeout(timeoutId);
-  }, [loading, targetMatchId, groupedMatches, hasScrolledToTarget]);
+  }, [loading, targetMatchId, groupedMatches, hasScrolledToTarget, matches]);
 
   const updateFilter = (event) => {
     setFilters((value) => ({
@@ -231,7 +238,7 @@ export function MatchesPage() {
       return;
     }
 
-    if (isMatchLocked(match) || normalizeStatus(match.status) !== "upcoming") {
+    if (!isMatchOpenForPrediction(match)) {
       toast.error("Predictions are locked for this match.");
       return;
     }
