@@ -48,12 +48,41 @@ When updating an existing project:
 2. test on a staging project when possible;
 3. run the latest `supabase/schema.sql`;
 4. verify RLS and function grants;
-5. run application tests;
-6. verify public leaderboard and sync views;
-7. verify predictions can still be saved before kickoff;
-8. verify trusted scoring fields remain protected.
+5. deploy the matching Edge Function revision;
+6. run application tests;
+7. verify public leaderboard and sync views;
+8. verify predictions can still be saved before kickoff;
+9. verify trusted scoring fields remain protected.
 
 The schema uses conditional creation and replacement definitions so existing data can normally be preserved.
+
+### Goal-event upgrade
+
+The live goal timeline requires:
+
+```text
+matches.goal_events jsonb
+```
+
+The latest schema adds it safely with `add column if not exists`.
+
+Verify:
+
+```sql
+select column_name, data_type
+from information_schema.columns
+where table_schema = 'public'
+  and table_name = 'matches'
+  and column_name = 'goal_events';
+```
+
+Expected data type:
+
+```text
+jsonb
+```
+
+Apply this schema update before deploying the current `sync-live-matches` Edge Function.
 
 ## Main schema areas
 
@@ -61,7 +90,7 @@ The schema includes:
 
 - user profiles;
 - public-safe leaderboard data;
-- matches;
+- matches and live goal events;
 - predictions;
 - champion predictions;
 - bracket predictions;
@@ -93,6 +122,8 @@ The database validates:
 - bracket windows;
 - trusted point fields.
 
+Client-side checks are for immediate feedback. Database checks remain authoritative.
+
 ## Edge Function secret
 
 Set:
@@ -107,6 +138,12 @@ Optional override:
 
 ```bash
 npx supabase secrets set ESPN_SCOREBOARD_URL=https://site.api.espn.com/apis/site/v2/sports/soccer/fifa.world/scoreboard
+```
+
+Deploy:
+
+```bash
+npx supabase functions deploy sync-live-matches
 ```
 
 ## Optional scheduler extensions

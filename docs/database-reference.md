@@ -29,11 +29,48 @@ Stores:
 - status;
 - score;
 - result;
-- venue and city;
+- venue, city, and host country;
 - provider metadata;
 - elapsed time;
-- status detail;
+- provider status detail;
+- synced goal events;
+- halftime score;
 - synchronization timestamp.
+
+Important live columns:
+
+```text
+elapsed
+status_detail
+goal_events
+halftime_team_a_score
+halftime_team_b_score
+provider_name
+provider_fixture_id
+last_synced_at
+```
+
+`goal_events` is JSONB. Each normalized entry can contain:
+
+```json
+{
+  "side": "team_a",
+  "minute": "34'",
+  "clock": 2040,
+  "player": "Player Name",
+  "own_goal": false,
+  "penalty": false
+}
+```
+
+Notes:
+
+- `side` is normalized to `team_a` or `team_b`;
+- `minute` is provider display text;
+- `clock` is the provider numeric clock where available;
+- `player` may be null when ESPN omits athlete data;
+- shootout attempts are excluded from ordinary goal events;
+- the frontend renders this timeline only during a live match phase.
 
 ### `predictions`
 
@@ -47,9 +84,15 @@ Stores one prediction per user per match:
 - exact-score points;
 - total match points.
 
+The unique constraint is:
+
+```text
+(user_id, match_id)
+```
+
 ### `world_cup_winner_predictions`
 
-Stores one champion pick per user.
+Stores one locked champion pick per user.
 
 ### `stage_predictions`
 
@@ -196,7 +239,7 @@ Can:
 
 Can:
 
-- update provider data;
+- update provider data, including `goal_events`;
 - insert logs;
 - execute protected scoring functions.
 
@@ -212,6 +255,23 @@ Triggers enforce or synchronize:
 - score/result consistency;
 - profile totals;
 - bracket windows.
+
+## Schema upgrade note
+
+Existing projects must rerun the latest `supabase/schema.sql` to add:
+
+```text
+matches.goal_events jsonb
+```
+
+The schema uses:
+
+```sql
+alter table public.matches
+add column if not exists goal_events jsonb;
+```
+
+Deploy the updated Edge Function only after the database accepts this column.
 
 ## Security notes
 

@@ -12,14 +12,14 @@ The repository supports multiple synchronization paths:
 
 ## Providers
 
-Current script providers:
+Current providers:
 
 ```text
 espn
 openfootball
 ```
 
-API-Football is not part of the current implementation.
+ESPN is the default no-key live-data source. openfootball is a fixture-oriented fallback and is not guaranteed to provide real-time results.
 
 ## Supabase Edge Function
 
@@ -33,22 +33,117 @@ supabase/functions/deno.json
 The function:
 
 - uses ESPN's public World Cup scoreboard feed;
-- selects matches near the current time;
+- selects candidate matches from four hours before now through twenty-four hours after now;
 - skips finished, cancelled, and postponed fixtures;
-- fetches events by date;
+- decides whether each candidate is due based on status, kickoff proximity, and `last_synced_at`;
+- requests ESPN events through one padded date range;
+- deduplicates returned events;
 - reconciles stored matches with provider events;
-- updates status, scores, result, elapsed time, status detail, goal events (scorer, minute, own-goal and penalty flags stored in the `goal_events` jsonb column), venue, city, provider metadata, and sync time;
+- updates status, scores, result, elapsed time, status detail, venue, city, provider metadata, and sync time;
+- extracts scoring plays into `matches.goal_events`;
 - recalculates finished-match points;
 - refreshes bracket scoring;
 - writes a synchronization log.
 
-Deploy:
+### Current due intervals
+
+Approximate minimum time since the previous sync:
+
+| Match state | Minimum interval |
+| --- | ---: |
+| Live phase | 45 seconds |
+| From 120 minutes before kickoff through 30 minutes after | 3 minutes |
+| Later within the next 24 hours | 30 minutes |
+
+These checks prevent repeated provider calls when a fixture is not yet close to kickoff.
+
+## ESPN date-range behavior
+
+ESPN groups scoreboard events by US-local date, not strictly by UTC date.
+
+An exact UTC date query can therefore miss a fixture shortly after UTC midnight.
+
+The Edge Function:
+
+1. finds the earliest and latest due kickoff;
+2. pads the range by one day on each side;
+3. sends one `dates=YYYYMMDD-YYYYMMDD` request;
+4. sets `limit=200`;
+5. deduplicates returned events.
+
+Do not simplify this back to one exact UTC date per match.
+
+## Event reconciliation
+
+The Edge Function first matches by:
+
+```text
+provider_fixture_id
+```
+
+If no provider ID match exists, it compares:
+
+- normalized Team A and Team B names;
+- reversed home/away order;
+- kickoff time within a four-hour tolerance.
+
+The broader Node.js synchronization path additionally uses:
+
+- provider name and fixture ID;
+- external reference;
+- match number;
+- kickoff;
+- stage;
+- normalized team names;
+- equivalent placeholder slots;
+- provider aliases.
+
+It can remove duplicate rows only when the duplicate has no predictions.
+
+## Goal-event synchronization
+
+ESPN scoring plays are normalized into:
+
+```text
+side
+minute
+clock
+player
+own_goal
+penalty
+```
+
+Shootout attempts are excluded because they are not normal match goals and the shootout result is represented through the penalties status.
+
+Goal events are stored in:
+
+```text
+matches.goal_events
+```
+
+The frontend displays valid goal events only while the match is in a live phase.
+
+## Deployment
+
+Apply the current schema before deploying the updated function:
+
+```text
+supabase/schema.sql
+```
+
+Then deploy:
 
 ```bash
 npx supabase login
 npx supabase link --project-ref <your-project-ref>
 npx supabase secrets set SERVICE_ROLE_KEY=your-private-service-role-key
 npx supabase functions deploy sync-live-matches
+```
+
+Optional endpoint override:
+
+```bash
+npx supabase secrets set ESPN_SCOREBOARD_URL=https://site.api.espn.com/apis/site/v2/sports/soccer/fifa.world/scoreboard
 ```
 
 ## GitHub Actions workflow
@@ -72,7 +167,7 @@ SUPABASE_URL
 SUPABASE_SERVICE_ROLE_KEY
 ```
 
-GitHub cron may be delayed and should not be treated as hard real-time scheduling.
+GitHub cron may be delayed and must not be treated as hard real-time scheduling.
 
 ## Node.js synchronization script
 
@@ -99,21 +194,6 @@ SUPABASE_SERVICE_ROLE_KEY=your-private-service-role-key
 FIXTURE_PROVIDER=espn
 ```
 
-## Reconciliation behavior
-
-The sync logic can use:
-
-- provider name and fixture ID;
-- external reference;
-- match number;
-- kickoff time;
-- stage;
-- normalized team names;
-- equivalent placeholder slots;
-- provider aliases.
-
-It also detects removable duplicate rows when the duplicate has no predictions.
-
 ## Admin fallback
 
 The Admin Dashboard reads:
@@ -126,12 +206,14 @@ The fallback can:
 
 - update changed fixtures;
 - insert fixtures;
-- preserve existing trusted values when provider data is incomplete;
+- preserve trusted values when provider data is incomplete;
 - recalculate finished matches;
 - refresh bracket scoring;
 - write a sync log.
 
 openfootball is not guaranteed to be an official or real-time source.
+
+Admin recalculation actions are guarded while a request is already running to prevent duplicate scoring calls.
 
 ## Optional Supabase cron
 
@@ -212,10 +294,14 @@ failed_count = 0
 error_message = null
 ```
 
+A candidate that ESPN does not yet return may be counted as unchanged when kickoff is still more than 30 minutes away. A missing live or near-kickoff event is counted as a failed sync.
+
 ## Operational limitations
 
 - ESPN may omit future fixtures.
-- Provider status formats may change.
+- Provider status and scoring-play formats may change.
+- ESPN date grouping requires the padded range described above.
 - GitHub Actions cron may be delayed.
-- Browser polling frequency does not determine provider update frequency.
+- Browser polling frequency does not determine provider refresh frequency.
 - openfootball is a fallback, not a guaranteed live feed.
+- This is near-live synchronization, not a guaranteed official real-time stream.

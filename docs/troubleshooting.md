@@ -8,10 +8,6 @@ Example:
 The symbol "updateScore" has already been declared
 ```
 
-Cause:
-
-- the same function or constant was added twice in one module.
-
 Fix:
 
 1. search for both declarations;
@@ -20,6 +16,7 @@ Fix:
 
 ```bash
 npm run build
+npm run lint
 ```
 
 ## Production shows a Supabase configuration error
@@ -33,7 +30,7 @@ VITE_SUPABASE_ANON_KEY
 
 are configured in GitHub Actions secrets or variables.
 
-Remember: production does not enable local demo mode.
+Production does not enable local demo mode.
 
 ## GitHub Pages assets return 404
 
@@ -57,9 +54,34 @@ Confirm `public/404.html` exists and contains the correct repository base.
 
 The application itself uses HashRouter routes.
 
+## Registration says the team list could not be loaded
+
+The champion picker is required for registration.
+
+Check:
+
+- Supabase configuration;
+- team/fixture data availability;
+- browser network errors;
+- the champion service query;
+- RLS and public read access for the required data.
+
+Use **Retry loading teams** after the underlying problem is corrected. Do not bypass the block with a fabricated champion value.
+
+## Password is rejected during registration or reset
+
+Current client policy requires:
+
+- at least 10 characters;
+- one uppercase letter;
+- one lowercase letter;
+- one number.
+
+Confirm Supabase Auth uses the same or a compatible password policy.
+
 ## Confirmation link does not return correctly
 
-Check Supabase Site URL and redirect allow list.
+Check the Supabase Site URL and redirect allow list.
 
 Include:
 
@@ -68,13 +90,32 @@ https://<github-username>.github.io/<repository-name>/
 https://<github-username>.github.io/<repository-name>/#/login
 ```
 
+## Confirmation email resend appears stuck
+
+- Wait for the current resend request to finish.
+- Do not double-click the resend action.
+- Check Supabase Auth email logs.
+- Check the inbox and spam folder.
+- Verify custom SMTP configuration if applicable.
+
 ## Password reset link opens but reset page rejects the session
 
 - request a fresh link;
 - open the latest link;
 - use the same browser;
 - confirm the base URL is allowed;
-- verify the app receives the recovery session.
+- verify the app receives the recovery session;
+- confirm the new password meets the current policy.
+
+## Log out is clicked twice or appears delayed
+
+The navigation guards duplicate sign-out requests and shows `Logging out...`.
+
+If it remains stuck:
+
+- inspect the Supabase sign-out request;
+- verify the authentication provider is reachable;
+- reload only after checking whether the session was actually removed.
 
 ## Scoreboard cannot load
 
@@ -88,15 +129,39 @@ Check:
 
 Do not expose the private `profiles` table as a shortcut.
 
-## Latest sync text is missing
+## Scoreboard rank changes while typing in search
+
+The current implementation keeps global rank and summary totals based on the full leaderboard while filtering only the displayed rows.
+
+If the rank still changes:
+
+- confirm the latest `ScoreboardPage` is deployed;
+- clear the stale GitHub Pages build;
+- verify the search filter is not replacing the full leaderboard source used for summaries.
+
+## Missing prediction badge and dashboard count disagree
+
+Both counts must use `src/utils/matches.js`.
+
+Verify:
+
+- navbar uses `getMissingPredictionCount`;
+- dashboard uses `isMatchOpenForPrediction`;
+- match cards use `hasRealTeams`;
+- old local placeholder helpers were removed;
+- the prediction-updated event fires after save.
+
+Placeholder labels such as `1A`, `2B`, `W12`, `L34`, group positions, winners, and runners-up must not count as open predictions.
+
+## Missing prediction badge does not decrease after save
 
 Check:
 
-- `sync_logs`;
-- `public_latest_successful_sync`;
-- `latest_successful_sync`;
-- sync trigger;
-- public select grants.
+- prediction save completed successfully;
+- `PREDICTIONS_UPDATED_EVENT` is dispatched;
+- Navbar is listening for the event;
+- the saved prediction has the correct `match_id`;
+- stale JavaScript assets are not cached.
 
 ## Prediction cannot be saved
 
@@ -104,23 +169,60 @@ Verify:
 
 - the user is authenticated;
 - both scores are entered;
-- scores are between 0 and 99;
+- scores are whole numbers from 0 to 99;
 - the result derived from scores is valid;
-- knockout score is not tied;
+- a knockout score is not tied;
 - kickoff has not passed;
 - status is `upcoming`;
 - both teams are real;
 - the prediction belongs to the current user.
 
-## Group page says access is denied
+Match cards update their lock state at kickoff without waiting for the next provider poll.
 
-Verify:
+## Match card still shows an action for a placeholder fixture
 
-- user is the owner or an accepted member;
-- membership status is `accepted`;
-- RLS policies are installed;
-- group owner membership exists;
-- the requested group ID is valid.
+Confirm the shared placeholder helper is used.
+
+Recognized placeholders include:
+
+```text
+TBD
+To be determined
+1A
+2B
+W12
+L34
+Group A winner
+Group B runner-up
+1st place
+2nd place
+3rd place
+```
+
+## Home dashboard remains in a loading state
+
+The dashboard has explicit loading and error states.
+
+Check:
+
+- match query;
+- user prediction query;
+- profile query;
+- pending invitation query;
+- browser console;
+- Supabase RLS.
+
+Retry after fixing the failed source rather than displaying stale values.
+
+## Group detail shows data from the previous group after an error
+
+The current page clears stale group state when loading fails.
+
+If stale data remains:
+
+- confirm the latest `GroupDetailPage` is deployed;
+- ensure cached assets were invalidated;
+- verify the route parameter changed correctly.
 
 ## Bracket stage is not open
 
@@ -136,6 +238,53 @@ order by stage;
 
 Also verify synced matches contain real teams rather than placeholders.
 
+## Live match phase label looks wrong
+
+Current normalized phases include:
+
+```text
+live
+halftime
+extra_time
+penalties
+penalty_shootout
+```
+
+Verify `status` and `status_detail` values in `matches`.
+
+Examples:
+
+- `HT` displays as `Half time`;
+- minute details display as `<minute> min`;
+- extra time falls back to `ET`;
+- penalties fall back to `PEN`.
+
+## Live goal events do not appear
+
+Check:
+
+- the latest schema includes `matches.goal_events`;
+- the current Edge Function is deployed;
+- ESPN returned scoring plays;
+- `goal_events` contains valid objects;
+- the match is currently in a live phase;
+- the scoring play is not a shootout attempt.
+
+Example query:
+
+```sql
+select
+  id,
+  team_a,
+  team_b,
+  status,
+  goal_events,
+  last_synced_at
+from public.matches
+where status in ('live', 'halftime', 'extra_time', 'penalties', 'penalty_shootout')
+order by match_date;
+```
+
 ## Edge Function does not update scores
 
 Check:
@@ -144,9 +293,23 @@ Check:
 - `SERVICE_ROLE_KEY`;
 - ESPN endpoint;
 - candidate match time window;
+- per-match due interval;
 - provider fixture matching;
 - function logs;
 - `sync_logs`.
+
+## ESPN sync misses a match near UTC midnight
+
+ESPN groups scoreboard events by US-local date.
+
+Confirm the deployed Edge Function:
+
+- builds a date range instead of one exact UTC date;
+- pads the earliest and latest due kickoffs by one day;
+- sends `limit=200`;
+- deduplicates returned events.
+
+The corrected implementation prevents repeated misses for matches such as a `01:00Z` kickoff listed under the previous ESPN date.
 
 ## GitHub Actions sync fails
 
@@ -157,7 +320,7 @@ SUPABASE_URL
 SUPABASE_SERVICE_ROLE_KEY
 ```
 
-Then inspect the workflow logs for:
+Then inspect workflow logs for:
 
 - install failure;
 - provider failure;
@@ -176,7 +339,7 @@ Remember:
 
 ## openfootball creates duplicates
 
-Inspect reconciliation fields:
+Inspect:
 
 - provider IDs;
 - external references;
