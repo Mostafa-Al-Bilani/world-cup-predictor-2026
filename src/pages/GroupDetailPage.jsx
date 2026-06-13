@@ -22,6 +22,10 @@ import { useAuth } from "../context/AuthContext";
 import { groupService } from "../services/groupService";
 import { formatDate, formatDateTime } from "../utils/date";
 import { getSafeErrorMessage } from "../utils/errors";
+import {
+  getPredictedScoreLabel,
+  getPredictionLabel,
+} from "../utils/predictions";
 
 export function GroupDetailPage() {
   const { groupId } = useParams();
@@ -754,12 +758,11 @@ function GroupPredictionMatchCard({ match, predictions }) {
               {prediction.predicted_result ? (
                 <>
                   <p className="text-sm text-slate-300">
-                    Pick: {formatPredictionResult(prediction, match)}
+                    Pick: {getPredictionLabel(match, prediction.predicted_result)}
                   </p>
 
                   <p className="text-sm font-black text-emerald-200">
-                    {prediction.predicted_home_score} -{" "}
-                    {prediction.predicted_away_score}
+                    {getPredictedScoreLabel(prediction)}
                   </p>
                 </>
               ) : (
@@ -816,20 +819,4 @@ function getConfirmLabel(action) {
   if (action.type === "remove") return "Remove member";
   if (action.type === "leave") return "Leave group";
   return "Delete group";
-}
-
-function formatPredictionResult(prediction, match) {
-  if (prediction.predicted_result === "team_a") {
-    return match.team_a;
-  }
-
-  if (prediction.predicted_result === "team_b") {
-    return match.team_b;
-  }
-
-  if (prediction.predicted_result === "draw") {
-    return "Draw";
-  }
-
-  return "No prediction yet";
 }
