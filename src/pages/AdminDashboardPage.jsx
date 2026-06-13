@@ -24,6 +24,7 @@ import { stagePredictionService } from "../services/stagePredictionService";
 import { syncLogService } from "../services/syncLogService";
 import { formatDateTime } from "../utils/date";
 import { getSafeErrorMessage } from "../utils/errors";
+import { normalizeMatchDisplayStatus } from "../utils/matchDisplay";
 
 const adminStatusFilterOptions = [
   { value: "all", label: "All statuses" },
@@ -87,7 +88,8 @@ export function AdminDashboardPage() {
 
     return matches.filter((match) => {
       const statusMatches =
-        matchStatusFilter === "all" || match.status === matchStatusFilter;
+        matchStatusFilter === "all" ||
+        normalizeMatchDisplayStatus(match.status) === matchStatusFilter;
 
       const queryMatches =
         !query ||
