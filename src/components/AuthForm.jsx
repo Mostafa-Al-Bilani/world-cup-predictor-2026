@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { PasswordField } from './PasswordField';
@@ -20,6 +20,7 @@ export function AuthForm({ mode }) {
     champion: '',
   });
   const [teams, setTeams] = useState([]);
+  const [teamsError, setTeamsError] = useState(false);
   const [loading, setLoading] = useState(false);
   const [resendingConfirmation, setResendingConfirmation] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
@@ -29,30 +30,31 @@ export function AuthForm({ mode }) {
   const firstInputRef = useRef(null);
   const isRegister = mode === 'register';
 
+  const loadTeams = useCallback(async () => {
+    setTeamsError(false);
+
+    try {
+      const rows = await championService.getAvailableTeams();
+
+      setTeams(rows);
+      setForm((current) => ({
+        ...current,
+        champion: current.champion || rows[0] || '',
+      }));
+
+      if (!rows.length) {
+        setTeamsError(true);
+      }
+    } catch (error) {
+      setTeamsError(true);
+      toast.error(getSafeErrorMessage(error, 'Could not load World Cup teams.'));
+    }
+  }, []);
+
   useEffect(() => {
-    if (!isRegister) return undefined;
-
-    let cancelled = false;
-
-    championService
-      .getAvailableTeams()
-      .then((rows) => {
-        if (cancelled) return;
-
-        setTeams(rows);
-        setForm((current) => ({
-          ...current,
-          champion: current.champion || rows[0] || '',
-        }));
-      })
-      .catch((error) => {
-        toast.error(getSafeErrorMessage(error, 'Could not load World Cup teams.'));
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [isRegister]);
+    if (!isRegister) return;
+    loadTeams();
+  }, [isRegister, loadTeams]);
 
   useEffect(() => {
     const shouldFocusAuth =
@@ -240,6 +242,19 @@ export function AuthForm({ mode }) {
                   : 'If email confirmation is enabled, this pick is saved after you confirm and log in.'
               }
             />
+          ) : null}
+
+          {isRegister && teamsError ? (
+            <div className="rounded-lg border border-amber-300/30 bg-amber-300/10 px-4 py-3 text-sm text-amber-100">
+              <p>The team list could not be loaded, so registration is blocked.</p>
+              <button
+                type="button"
+                onClick={loadTeams}
+                className="mt-2 rounded-full border border-amber-200/40 px-4 py-2 text-xs font-black text-amber-50 transition hover:bg-amber-200 hover:text-amber-950"
+              >
+                Retry loading teams
+              </button>
+            </div>
           ) : null}
         </div>
 
