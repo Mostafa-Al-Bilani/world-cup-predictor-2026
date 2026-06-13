@@ -51,6 +51,7 @@ export function AdminDashboardPage() {
   const [recalculatingStages, setRecalculatingStages] = useState(false);
   const [matchSearch, setMatchSearch] = useState("");
   const [matchStatusFilter, setMatchStatusFilter] = useState("all");
+  const [recalculatingMatchId, setRecalculatingMatchId] = useState(null);
 
   const load = async () => {
     setLoading(true);
@@ -145,12 +146,18 @@ export function AdminDashboardPage() {
   };
 
   const recalculate = async (match) => {
+    if (recalculatingMatchId) return;
+
+    setRecalculatingMatchId(match.id);
+
     try {
       await predictionService.recalculateMatch(match.id);
       toast.success("Points recalculated from predictions.");
       await load();
     } catch (error) {
       toast.error(getSafeErrorMessage(error, "Could not recalculate points."));
+    } finally {
+      setRecalculatingMatchId(null);
     }
   };
 
@@ -428,10 +435,13 @@ export function AdminDashboardPage() {
 
                       <button
                         type="button"
+                        disabled={recalculatingMatchId !== null}
                         onClick={() => recalculate(match)}
-                        className="rounded-full border border-emerald-300/40 px-4 py-2 text-sm font-bold text-emerald-200 transition hover:bg-emerald-300 hover:text-emerald-950"
+                        className="rounded-full border border-emerald-300/40 px-4 py-2 text-sm font-bold text-emerald-200 transition hover:bg-emerald-300 hover:text-emerald-950 disabled:cursor-not-allowed disabled:opacity-60"
                       >
-                        Recalculate
+                        {recalculatingMatchId === match.id
+                          ? "Recalculating..."
+                          : "Recalculate"}
                       </button>
 
                       <button
