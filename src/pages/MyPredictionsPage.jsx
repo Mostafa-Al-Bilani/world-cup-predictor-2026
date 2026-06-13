@@ -45,21 +45,29 @@ const normalizeStatus = (status) =>
     .toLowerCase()
     .replace(/[\s-]+/g, "_");
 
-function getChampionResultLabel(championPrediction) {
+function getChampionResultLabel(championPrediction, isTournamentDecided) {
   if (!championPrediction) return "Pending";
 
   if (championPrediction.points_awarded === 3) {
     return "Correct +3 pts";
   }
 
-  if (
-    championPrediction.points_awarded === 0 &&
-    championPrediction.updated_at !== championPrediction.created_at
-  ) {
+  if (isTournamentDecided && championPrediction.points_awarded === 0) {
     return "Incorrect";
   }
 
   return "Pending";
+}
+
+function isFinalStage(stage) {
+  const text = String(stage ?? "").toLowerCase();
+  return (
+    text.includes("final") &&
+    !text.includes("semi") &&
+    !text.includes("quarter") &&
+    !text.includes("third") &&
+    !text.includes("3rd")
+  );
 }
 
 function getEmptyDescription(activeView, resultFilter) {
@@ -163,6 +171,16 @@ export function MyPredictionsPage() {
       });
   }, [activeView, allRows, resultFilter]);
 
+  const isTournamentDecided = useMemo(
+    () =>
+      matches.some(
+        (match) =>
+          isFinalStage(match.stage) &&
+          normalizeStatus(match.status) === "finished",
+      ),
+    [matches],
+  );
+
   const summary = useMemo(() => {
     const upcoming = allRows.filter(
       ({ match }) => normalizeStatus(match.status) === "upcoming",
@@ -262,7 +280,7 @@ export function MyPredictionsPage() {
               <ChampionMetric label="Potential points" value="3 pts" />
               <ChampionMetric
                 label="Result"
-                value={getChampionResultLabel(championPick)}
+                value={getChampionResultLabel(championPick, isTournamentDecided)}
               />
             </div>
           </div>
@@ -406,8 +424,7 @@ export function MyPredictionsPage() {
                     </td>
 
                     <td className="px-5 py-4 text-slate-300">
-                      {prediction.winner_points ??
-                        Number(prediction.is_correct === true)}
+                      {Number(prediction.winner_points ?? 0)}
                     </td>
 
                     <td className="px-5 py-4 text-slate-300">
