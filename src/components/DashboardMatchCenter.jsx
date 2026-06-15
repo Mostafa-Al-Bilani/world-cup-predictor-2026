@@ -9,6 +9,7 @@ import { LiveMatchSpotlight } from "./LiveMatchSpotlight";
 import { StatusBadge } from "./StatusBadge";
 import { TeamFlag } from "./TeamFlag";
 import { formatDateTime, getUserTimeZone } from "../utils/date";
+import { formatKickoffCountdown } from "../utils/kickoffCountdown";
 import { normalizeMatchDisplayStatus } from "../utils/matchDisplay";
 import { getPredictionSummary } from "../utils/predictions";
 
@@ -45,9 +46,11 @@ export function DashboardMatchCenter({
   recentMatches,
   nextMatches,
   predictionByMatch,
+  now,
 }) {
   const timeZone = getUserTimeZone();
   const hasLiveMatches = liveMatches.length > 0;
+  const firstUpcomingMatchId = nextMatches[0]?.id;
 
   return (
     <section className="mt-8 overflow-hidden rounded-xl border border-white/10 bg-slate-950/72 p-4 shadow-2xl sm:p-6">
@@ -115,6 +118,8 @@ export function DashboardMatchCenter({
                 key={match.id}
                 match={match}
                 prediction={predictionByMatch.get(match.id)}
+                showCountdown={match.id === firstUpcomingMatchId}
+                now={now}
               />
             ))
           ) : (
@@ -189,11 +194,16 @@ function RecentCompletedCard({ match }) {
   );
 }
 
-function UpcomingCompactCard({ match, prediction }) {
+function UpcomingCompactCard({ match, prediction, showCountdown, now }) {
+  const countdown = showCountdown
+    ? formatKickoffCountdown(match.match_date, now)
+    : null;
+
   return (
     <CompactMatchCard
       match={match}
       statusLabel={getStatusLabel(match)}
+      countdown={countdown}
       centerContent={
         <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-black text-slate-300">
           VS
@@ -223,6 +233,7 @@ function CompactMatchCard({
   detail,
   note,
   actionLabel,
+  countdown,
 }) {
   return (
     <article className="min-w-0 rounded-lg border border-white/10 bg-slate-950/55 p-3.5 sm:p-4">
@@ -232,7 +243,16 @@ function CompactMatchCard({
           <span className="min-w-0 break-words">{match.stage}</span>
         </p>
 
-        <StatusBadge label={statusLabel} tone={statusTone} />
+        <div className="flex min-w-0 flex-wrap items-center gap-2 sm:justify-end">
+          {countdown ? (
+            <KickoffCountdownPill
+              countdown={countdown}
+              className="hidden sm:inline-flex"
+            />
+          ) : null}
+
+          <StatusBadge label={statusLabel} tone={statusTone} />
+        </div>
       </div>
 
       <div className="mt-3 grid min-w-0 grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-3">
@@ -244,6 +264,13 @@ function CompactMatchCard({
       <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="min-w-0 space-y-1">
           <p className="min-w-0 break-words">{detail}</p>
+
+          {countdown ? (
+            <KickoffCountdownPill
+              countdown={countdown}
+              className="sm:hidden"
+            />
+          ) : null}
 
           {note ? (
             <p className="min-w-0 break-words text-sm font-semibold text-slate-200">
@@ -260,6 +287,28 @@ function CompactMatchCard({
         </Link>
       </div>
     </article>
+  );
+}
+
+function KickoffCountdownPill({ countdown, className = "" }) {
+  const isStartingNow = countdown.expired;
+
+  return (
+    <span
+      className={`inline-flex max-w-full items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-semibold ${
+        isStartingNow
+          ? "border-white/15 bg-white/[0.05] text-slate-300"
+          : "border-emerald-300/30 bg-emerald-300/10 text-emerald-100"
+      } ${className}`}
+      aria-label={countdown.ariaLabel}
+    >
+      <Clock
+        size={12}
+        className={`shrink-0 ${isStartingNow ? "text-slate-400" : "text-emerald-300"}`}
+        aria-hidden="true"
+      />
+      <span className="min-w-0 break-words">{countdown.text}</span>
+    </span>
   );
 }
 
