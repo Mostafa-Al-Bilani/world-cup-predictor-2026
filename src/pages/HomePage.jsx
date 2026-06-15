@@ -233,6 +233,7 @@ export function HomePage() {
         nextPredictionNeeded={nextPredictionNeeded}
         dashboardMatchWindows={dashboardMatchWindows}
         predictionByMatch={predictionByMatch}
+        now={tick}
       />
     );
   }
@@ -258,6 +259,7 @@ function DashboardHome({
   nextPredictionNeeded,
   dashboardMatchWindows,
   predictionByMatch,
+  now,
 }) {
   const totalPredictionPoints = predictions.reduce(
     (sum, prediction) => sum + getPredictionTotalPoints(prediction),
@@ -348,6 +350,7 @@ function DashboardHome({
         recentMatches={dashboardMatchWindows.recentMatches}
         nextMatches={dashboardMatchWindows.nextMatches}
         predictionByMatch={predictionByMatch}
+        now={now}
       />
 
       <section className="mt-7 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
