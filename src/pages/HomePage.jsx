@@ -11,6 +11,7 @@ import {
   Trophy,
   Users,
 } from "lucide-react";
+import { DashboardMatchCenter } from "../components/DashboardMatchCenter";
 import { EmptyState } from "../components/EmptyState";
 import { LoadingSpinner } from "../components/LoadingSpinner";
 import { MatchCard } from "../components/MatchCard";
@@ -23,7 +24,8 @@ import { profileService } from "../services/profileService";
 import { supabase } from "../services/supabaseClient";
 import { formatDateTime, getTimeRemaining } from "../utils/date";
 import { getSafeErrorMessage } from "../utils/errors";
-import { hasRealTeams, isMatchOpenForPrediction } from "../utils/matches";
+import { isMatchOpenForPrediction } from "../utils/matches";
+import { getDashboardMatchWindows } from "../utils/matchWindows";
 import { getPredictionTotalPoints } from "../utils/predictions";
 import { MATCHES_UPDATED_EVENT } from "../hooks/useLiveMatchNotifications";
 
@@ -53,17 +55,6 @@ const features = [
     icon: Users,
   },
 ];
-
-const normalizeStatus = (status) =>
-  String(status ?? "")
-    .trim()
-    .toLowerCase()
-    .replace(/[\s-]+/g, "_");
-
-const isLiveMatchStatus = (status) =>
-  ["live", "halftime", "extra_time", "penalties", "penalty_shootout"].includes(
-    normalizeStatus(status),
-  );
 
 async function getChampionPick(userId) {
   if (!userId) return null;
@@ -185,14 +176,12 @@ export function HomePage() {
     [matches, tick],
   );
 
-  const liveMatches = useMemo(
-    () =>
-      matches
-        .filter(hasRealTeams)
-        .filter((match) => isLiveMatchStatus(match.status))
-        .sort((a, b) => new Date(a.match_date) - new Date(b.match_date)),
-    [matches],
+  const dashboardMatchWindows = useMemo(
+    () => getDashboardMatchWindows(matches, tick),
+    [matches, tick],
   );
+
+  const liveMatches = dashboardMatchWindows.liveMatches;
 
   const predictionByMatch = useMemo(
     () =>
@@ -278,14 +267,11 @@ export function HomePage() {
         championPrediction={championPrediction}
         leaders={leaders}
         predictions={predictions}
-        upcomingMatches={upcomingMatches}
         missingPredictions={missingPredictions}
         pendingInvitations={pendingInvitations}
-        nextMatch={nextMatch}
         nextPredictionNeeded={nextPredictionNeeded}
-        remaining={remaining}
+        dashboardMatchWindows={dashboardMatchWindows}
         predictionByMatch={predictionByMatch}
-        liveMatches={liveMatches}
         busyMatchId={busyMatchId}
         isAuthenticated={isAuthenticated}
         handlePredict={handlePredict}
@@ -309,14 +295,11 @@ function DashboardHome({
   championPrediction,
   leaders,
   predictions,
-  upcomingMatches,
   missingPredictions,
   pendingInvitations,
-  nextMatch,
   nextPredictionNeeded,
-  remaining,
+  dashboardMatchWindows,
   predictionByMatch,
-  liveMatches,
   busyMatchId,
   isAuthenticated,
   handlePredict,
@@ -405,8 +388,10 @@ function DashboardHome({
         </section>
       ) : null}
 
-      <LiveMatchFocusSection
-        liveMatches={liveMatches}
+      <DashboardMatchCenter
+        liveMatches={dashboardMatchWindows.liveMatches}
+        recentMatches={dashboardMatchWindows.recentMatches}
+        nextMatches={dashboardMatchWindows.nextMatches}
         predictionByMatch={predictionByMatch}
         isAuthenticated={isAuthenticated}
         busyMatchId={busyMatchId}
@@ -424,122 +409,54 @@ function DashboardHome({
         <DashboardStatCard label="Exact scores" value={exactScores} />
       </section>
 
-      <section className="mt-8 grid gap-6 lg:grid-cols-[1.15fr_0.85fr]">
-        <div className="space-y-6">
-          <DashboardPanel
-            title="Next prediction needed"
-            actionLabel="Open matches"
-            actionTo="/matches"
-          >
-            {nextPredictionNeeded ? (
-              <NextPredictionCard match={nextPredictionNeeded} />
-            ) : (
-              <EmptyDashboardMessage
-                title="No missing upcoming predictions"
-                description="You are caught up for the currently scheduled upcoming matches."
-              />
-            )}
-          </DashboardPanel>
+      <section className="mt-8 grid gap-6 lg:grid-cols-3">
+        <DashboardPanel
+          title="Next prediction needed"
+          actionLabel="Open matches"
+          actionTo="/matches"
+        >
+          {nextPredictionNeeded ? (
+            <NextPredictionCard match={nextPredictionNeeded} />
+          ) : (
+            <EmptyDashboardMessage
+              title="No missing upcoming predictions"
+              description="You are caught up for the currently scheduled upcoming matches."
+            />
+          )}
+        </DashboardPanel>
 
-          <DashboardPanel
-            title="Upcoming matches"
-            actionLabel="View all"
-            actionTo="/matches"
-          >
-            <div className="space-y-3">
-              {upcomingMatches.slice(0, 5).map((match) => {
-                const prediction = predictionByMatch.get(match.id);
+        <DashboardPanel
+          title="Champion pick"
+          actionLabel={championPrediction ? "View predictions" : "Pick champion"}
+          actionTo={championPrediction ? "/my-predictions" : "/champion-pick"}
+        >
+          <div className="rounded-lg border border-white/10 bg-white/[0.04] p-4">
+            <p className="text-sm text-slate-400">Your champion</p>
+            <p className="mt-2 text-2xl font-black text-gold-300">
+              {championPrediction?.predicted_team ?? "Not selected"}
+            </p>
+            <p className="mt-2 text-sm text-slate-400">
+              {championPrediction
+                ? "Champion prediction submitted. Worth 3 points if correct."
+                : "Choose your champion. This pick is worth 3 points."}
+            </p>
+          </div>
+        </DashboardPanel>
 
-                return (
-                  <article
-                    key={match.id}
-                    className="rounded-lg border border-white/10 bg-slate-950/64 p-4"
-                  >
-                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                      <div>
-                        <p className="text-xs font-bold uppercase tracking-[0.22em] text-slate-400">
-                          {match.stage}
-                        </p>
-
-                        <h3 className="mt-2 text-lg font-black text-white">
-                          {match.team_a} vs {match.team_b}
-                        </h3>
-
-                        <p className="mt-1 text-sm text-slate-400">
-                          {prediction
-                            ? `Your pick: ${formatPredictionSummary(
-                                match,
-                                prediction,
-                              )}`
-                            : "No prediction yet"}
-                        </p>
-                      </div>
-
-                      <p className="text-sm text-slate-300">
-                        {formatDateTime(match.match_date)}
-                      </p>
-                    </div>
-                  </article>
-                );
-              })}
-
-              {!upcomingMatches.length ? (
-                <EmptyDashboardMessage
-                  title="No upcoming matches"
-                  description="No scheduled upcoming match is available yet."
-                />
-              ) : null}
-            </div>
-          </DashboardPanel>
-        </div>
-
-        <div className="space-y-6">
-          <DashboardPanel title="Next kickoff">
-            {nextMatch && remaining ? (
-              <NextKickoffCard match={nextMatch} remaining={remaining} />
-            ) : (
-              <EmptyDashboardMessage
-                title="No next match"
-                description="No upcoming kickoff is available."
-              />
-            )}
-          </DashboardPanel>
-
-          <DashboardPanel
-            title="Champion pick"
-            actionLabel={
-              championPrediction ? "View predictions" : "Pick champion"
-            }
-            actionTo={championPrediction ? "/my-predictions" : "/champion-pick"}
-          >
-            <div className="rounded-lg border border-white/10 bg-white/[0.04] p-4">
-              <p className="text-sm text-slate-400">Your champion</p>
-              <p className="mt-2 text-2xl font-black text-gold-300">
-                {championPrediction?.predicted_team ?? "Not selected"}
-              </p>
-              <p className="mt-2 text-sm text-slate-400">
-                {championPrediction
-                  ? "Champion prediction submitted. Worth 3 points if correct."
-                  : "Choose your champion. This pick is worth 3 points."}
-              </p>
-            </div>
-          </DashboardPanel>
-
-          <DashboardPanel
-            title="Top three"
-            actionLabel="Full table"
-            actionTo="/scoreboard"
-          >
-            {leaders.length ? (
-              <TopThreePodium users={leaders} />
-            ) : (
-              <EmptyDashboardMessage
-                title="No rankings yet"
-                description="The podium opens when players start scoring points."
-              />
-            )}
-          </DashboardPanel>
-        </div>
+        <DashboardPanel
+          title="Top three"
+          actionLabel="Full table"
+          actionTo="/scoreboard"
+        >
+          {leaders.length ? (
+            <TopThreePodium users={leaders} />
+          ) : (
+            <EmptyDashboardMessage
+              title="No rankings yet"
+              description="The podium opens when players start scoring points."
+            />
+          )}
+        </DashboardPanel>
       </section>
     </main>
   );
@@ -845,14 +762,6 @@ function NextKickoffAside({ nextMatch, remaining }) {
   );
 }
 
-function NextKickoffCard({ match, remaining }) {
-  return (
-    <div className="rounded-lg border border-white/10 bg-white/[0.04] p-4">
-      <NextKickoffContent match={match} remaining={remaining} />
-    </div>
-  );
-}
-
 function NextKickoffContent({ match, remaining }) {
   return (
     <>
@@ -895,25 +804,4 @@ function ClockUnit({ label, value }) {
       </p>
     </div>
   );
-}
-
-function formatPredictionSummary(match, prediction) {
-  const resultLabel =
-    prediction.predicted_result === "team_a"
-      ? match.team_a
-      : prediction.predicted_result === "team_b"
-        ? match.team_b
-        : "Draw";
-
-  const hasScore =
-    prediction.predicted_home_score !== null &&
-    prediction.predicted_home_score !== undefined &&
-    prediction.predicted_away_score !== null &&
-    prediction.predicted_away_score !== undefined;
-
-  if (!hasScore) {
-    return resultLabel;
-  }
-
-  return `${resultLabel}, ${prediction.predicted_home_score}-${prediction.predicted_away_score}`;
 }

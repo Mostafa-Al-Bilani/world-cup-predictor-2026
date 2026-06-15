@@ -22,6 +22,19 @@ export const getPredictedScoreLabel = (prediction) => {
   return `${prediction.predicted_home_score} - ${prediction.predicted_away_score}`;
 };
 
+export const getPredictionSummary = (match, prediction) => {
+  if (!prediction) return 'No prediction yet';
+
+  const resultLabel = getPredictionLabel(match, prediction.predicted_result);
+  const scoreLabel = getPredictedScoreLabel(prediction);
+
+  if (scoreLabel === 'No score pick') {
+    return resultLabel;
+  }
+
+  return `${resultLabel}, ${scoreLabel}`;
+};
+
 export const getPredictionTotalPoints = (prediction) => prediction?.total_points ?? prediction?.points_awarded ?? 0;
 
 export const calculatePredictionPoints = (match, prediction) => {
