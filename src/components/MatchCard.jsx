@@ -10,6 +10,7 @@ import {
   getLiveGoalEvents,
   getLivePhaseClassName,
   getLivePhaseLabel,
+  isMatchInLivePhase,
   normalizeMatchDisplayStatus,
   shouldShowScoreBox,
 } from "../utils/matchDisplay";
@@ -312,7 +313,10 @@ export function MatchCard({
         </div>
 
         {shouldShowScoreBox(match) ? (
-          <div className="mt-5 rounded-lg border border-white/10 bg-white/5 px-4 py-3 text-center">
+          <div
+            className="mt-5 rounded-lg border border-white/10 bg-white/5 px-4 py-3 text-center"
+            aria-live={isMatchInLivePhase(match) ? "polite" : undefined}
+          >
             <p className="text-2xl font-black">
               {match.team_a_score ?? "-"} : {match.team_b_score ?? "-"}
               {livePhaseLabel ? (
