@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import toast from "react-hot-toast";
-import { Link, useNavigate } from "react-router-dom";
+import { Link } from "react-router-dom";
 import {
   CalendarDays,
   ChevronRight,
@@ -23,7 +22,6 @@ import { predictionService } from "../services/predictionService";
 import { profileService } from "../services/profileService";
 import { supabase } from "../services/supabaseClient";
 import { formatDateTime, getTimeRemaining } from "../utils/date";
-import { getSafeErrorMessage } from "../utils/errors";
 import { isMatchOpenForPrediction } from "../utils/matches";
 import { getDashboardMatchWindows } from "../utils/matchWindows";
 import { getPredictionTotalPoints } from "../utils/predictions";
@@ -75,7 +73,6 @@ async function getChampionPick(userId) {
 }
 
 export function HomePage() {
-  const navigate = useNavigate();
   const { user, profile, isAuthenticated } = useAuth();
 
   const [matches, setMatches] = useState([]);
@@ -83,7 +80,6 @@ export function HomePage() {
   const [leaders, setLeaders] = useState([]);
   const [championPrediction, setChampionPrediction] = useState(null);
   const [pendingInvitations, setPendingInvitations] = useState([]);
-  const [busyMatchId, setBusyMatchId] = useState(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
   const [tick, setTick] = useState(Date.now());
@@ -201,41 +197,6 @@ export function HomePage() {
 
   const nextPredictionNeeded = missingPredictions[0];
 
-  const handlePredict = async (match, predictedResult, scoreDraft = {}) => {
-    if (!isAuthenticated) {
-      navigate("/login", { state: { from: "/matches" } });
-      return;
-    }
-
-    if (!isMatchOpenForPrediction(match)) {
-      toast.error("Predictions are locked for this match.");
-      return;
-    }
-
-    setBusyMatchId(match.id);
-
-    try {
-      const saved = await predictionService.upsertPrediction({
-        userId: user.id,
-        matchId: match.id,
-        predictedResult,
-        predictedHomeScore: scoreDraft.predictedHomeScore,
-        predictedAwayScore: scoreDraft.predictedAwayScore,
-      });
-
-      setPredictions((items) => [
-        ...items.filter((prediction) => prediction.match_id !== match.id),
-        saved,
-      ]);
-
-      toast.success(`Saved: ${match.team_a} vs ${match.team_b}`);
-    } catch (error) {
-      toast.error(getSafeErrorMessage(error, "Could not save prediction."));
-    } finally {
-      setBusyMatchId(null);
-    }
-  };
-
   if (loading) {
     return <LoadingSpinner label="Loading dashboard" />;
   }
@@ -272,9 +233,6 @@ export function HomePage() {
         nextPredictionNeeded={nextPredictionNeeded}
         dashboardMatchWindows={dashboardMatchWindows}
         predictionByMatch={predictionByMatch}
-        busyMatchId={busyMatchId}
-        isAuthenticated={isAuthenticated}
-        handlePredict={handlePredict}
       />
     );
   }
@@ -300,9 +258,6 @@ function DashboardHome({
   nextPredictionNeeded,
   dashboardMatchWindows,
   predictionByMatch,
-  busyMatchId,
-  isAuthenticated,
-  handlePredict,
 }) {
   const totalPredictionPoints = predictions.reduce(
     (sum, prediction) => sum + getPredictionTotalPoints(prediction),
@@ -393,12 +348,9 @@ function DashboardHome({
         recentMatches={dashboardMatchWindows.recentMatches}
         nextMatches={dashboardMatchWindows.nextMatches}
         predictionByMatch={predictionByMatch}
-        isAuthenticated={isAuthenticated}
-        busyMatchId={busyMatchId}
-        onPredict={handlePredict}
       />
 
-      <section className="mt-8 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <section className="mt-7 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <DashboardStatCard
           label="Missing predictions"
           value={missingPredictions.length}
