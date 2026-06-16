@@ -1,9 +1,10 @@
 import { Toaster } from "react-hot-toast";
 import { HashRouter, Route, Routes } from "react-router-dom";
 import { AdminRoute } from "./components/AdminRoute";
+import { AuthCallbackBoundary } from "./components/AuthCallbackBoundary";
 import { OnboardingGate } from "./components/OnboardingGate";
-import { OAuthCallbackShell } from "./components/OAuthCallbackShell";
 import { PasswordRecoveryRedirect } from "./components/PasswordRecoveryRedirect";
+import { PostAuthRedirect } from "./components/PostAuthRedirect";
 import { ProtectedRoute } from "./components/ProtectedRoute";
 import { ScrollToTop } from "./components/ScrollToTop";
 import { AuthProvider } from "./context/AuthContext";
@@ -26,6 +27,95 @@ import { ScoreboardPage } from "./pages/ScoreboardPage";
 import { UsernameSetupPage } from "./pages/UsernameSetupPage";
 import { hasSupabaseConfigurationError } from "./services/supabaseClient";
 
+function ApplicationRoutes() {
+  return (
+    <>
+      <ScrollToTop />
+      <PostAuthRedirect />
+      <PasswordRecoveryRedirect />
+      <OnboardingGate />
+
+      <Routes>
+        <Route element={<AppLayout />}>
+          <Route index element={<HomePage />} />
+          <Route path="login" element={<LoginPage />} />
+          <Route path="register" element={<RegisterPage />} />
+          <Route path="forgot-password" element={<ForgotPasswordPage />} />
+          <Route path="reset-password" element={<ResetPasswordPage />} />
+
+          <Route
+            path="setup-username"
+            element={
+              <ProtectedRoute>
+                <UsernameSetupPage />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="champion-pick"
+            element={
+              <ProtectedRoute>
+                <ChampionPickPage />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route path="matches" element={<MatchesPage />} />
+          <Route path="scoreboard" element={<ScoreboardPage />} />
+
+          <Route
+            path="my-predictions"
+            element={
+              <ProtectedRoute>
+                <MyPredictionsPage />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="bracket"
+            element={
+              <ProtectedRoute>
+                <BracketPredictionsPage />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="groups"
+            element={
+              <ProtectedRoute>
+                <GroupsPage />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="groups/:groupId"
+            element={
+              <ProtectedRoute>
+                <GroupDetailPage />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="admin"
+            element={
+              <AdminRoute>
+                <AdminDashboardPage />
+              </AdminRoute>
+            }
+          />
+
+          <Route path="*" element={<NotFoundPage />} />
+        </Route>
+      </Routes>
+    </>
+  );
+}
+
 export function App() {
   if (hasSupabaseConfigurationError) {
     return <ConfigurationErrorPage />;
@@ -33,91 +123,11 @@ export function App() {
 
   return (
     <AuthProvider>
-      <HashRouter>
-        <ScrollToTop />
-        <OAuthCallbackShell>
-          <PasswordRecoveryRedirect />
-          <OnboardingGate />
-
-          <Routes>
-          <Route element={<AppLayout />}>
-            <Route index element={<HomePage />} />
-            <Route path="login" element={<LoginPage />} />
-            <Route path="register" element={<RegisterPage />} />
-            <Route path="forgot-password" element={<ForgotPasswordPage />} />
-            <Route path="reset-password" element={<ResetPasswordPage />} />
-
-            <Route
-              path="setup-username"
-              element={
-                <ProtectedRoute>
-                  <UsernameSetupPage />
-                </ProtectedRoute>
-              }
-            />
-
-            <Route
-              path="champion-pick"
-              element={
-                <ProtectedRoute>
-                  <ChampionPickPage />
-                </ProtectedRoute>
-              }
-            />
-
-            <Route path="matches" element={<MatchesPage />} />
-            <Route path="scoreboard" element={<ScoreboardPage />} />
-
-            <Route
-              path="my-predictions"
-              element={
-                <ProtectedRoute>
-                  <MyPredictionsPage />
-                </ProtectedRoute>
-              }
-            />
-
-            <Route
-              path="bracket"
-              element={
-                <ProtectedRoute>
-                  <BracketPredictionsPage />
-                </ProtectedRoute>
-              }
-            />
-
-            <Route
-              path="groups"
-              element={
-                <ProtectedRoute>
-                  <GroupsPage />
-                </ProtectedRoute>
-              }
-            />
-
-            <Route
-              path="groups/:groupId"
-              element={
-                <ProtectedRoute>
-                  <GroupDetailPage />
-                </ProtectedRoute>
-              }
-            />
-
-            <Route
-              path="admin"
-              element={
-                <AdminRoute>
-                  <AdminDashboardPage />
-                </AdminRoute>
-              }
-            />
-
-            <Route path="*" element={<NotFoundPage />} />
-          </Route>
-        </Routes>
-        </OAuthCallbackShell>
-      </HashRouter>
+      <AuthCallbackBoundary>
+        <HashRouter>
+          <ApplicationRoutes />
+        </HashRouter>
+      </AuthCallbackBoundary>
 
       <Toaster
         position="top-right"

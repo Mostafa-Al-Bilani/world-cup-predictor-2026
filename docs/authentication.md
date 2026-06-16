@@ -126,12 +126,8 @@ Add:
 
 ```text
 http://localhost:5173/
-http://localhost:5173/#/login
-http://localhost:5173/#/register
 http://localhost:5173/#/reset-password
 https://<github-username>.github.io/<repository-name>/
-https://<github-username>.github.io/<repository-name>/#/login
-https://<github-username>.github.io/<repository-name>/#/register
 https://<github-username>.github.io/<repository-name>/#/reset-password
 ```
 

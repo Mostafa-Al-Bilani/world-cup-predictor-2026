@@ -1,6 +1,6 @@
 import { isDemoMode, supabase } from './supabaseClient';
 import { localStore } from './localStore';
-import { getAppBaseUrl, getHashRouteRedirectUrl } from '../utils/authRedirect';
+import { getAppBaseUrl } from '../utils/authRedirect';
 import { normalizeEmail, normalizeUsername, requirePassword, validatePassword } from '../utils/validation';
 
 const makeProfile = ({ id, email, username, isAdmin = false }) => ({
@@ -18,7 +18,7 @@ const makeProfile = ({ id, email, username, isAdmin = false }) => ({
   created_at: new Date().toISOString(),
 });
 
-const getEmailConfirmationRedirectUrl = () => getHashRouteRedirectUrl('/login');
+const getEmailConfirmationRedirectUrl = () => getAppBaseUrl();
 const getPasswordResetRedirectUrl = () => getAppBaseUrl();
 
 export const authService = {

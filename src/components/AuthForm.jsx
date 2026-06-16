@@ -13,7 +13,7 @@ import { getSafeErrorMessage } from '../utils/errors';
 export function AuthForm({ mode }) {
   const navigate = useNavigate();
   const location = useLocation();
-  const { signIn, signUp, isDemoMode } = useAuth();
+  const { signIn, signUp, isDemoMode, consumeAuthFlash } = useAuth();
   const [form, setForm] = useState({
     username: '',
     email: '',
@@ -56,6 +56,24 @@ export function AuthForm({ mode }) {
     if (!isRegister) return;
     loadTeams();
   }, [isRegister, loadTeams]);
+
+  useEffect(() => {
+    if (isRegister) return;
+
+    const flash = consumeAuthFlash();
+    if (!flash) return;
+
+    if (flash.type === 'success') {
+      setSuccessMessage(flash.message);
+      setErrorMessage('');
+      toast.success(flash.message);
+      return;
+    }
+
+    setErrorMessage(flash.message);
+    setSuccessMessage('');
+    toast.error(flash.message);
+  }, [consumeAuthFlash, isRegister]);
 
   useEffect(() => {
     const shouldFocusAuth =
