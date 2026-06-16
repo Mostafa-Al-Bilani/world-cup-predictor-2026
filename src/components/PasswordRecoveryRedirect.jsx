@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { shouldPromptForChampionPrediction } from '../utils/championGate';
 
 const isSupabaseAuthCallback = (location) => {
   const rawHash = window.location.hash;
@@ -15,7 +16,15 @@ const isSupabaseAuthCallback = (location) => {
 };
 
 export function PasswordRecoveryRedirect() {
-  const { championPrediction, isAdmin, isAuthenticated, loading, passwordRecovery } = useAuth();
+  const {
+    championPrediction,
+    championPredictionsOpen,
+    championQueryStatus,
+    isAdmin,
+    isAuthenticated,
+    loading,
+    passwordRecovery,
+  } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
 
@@ -33,13 +42,33 @@ export function PasswordRecoveryRedirect() {
       return;
     }
 
-    if (!isAdmin && !championPrediction) {
+    if (
+      shouldPromptForChampionPrediction({
+        authLoading: loading,
+        isAuthenticated,
+        isAdmin,
+        queryStatus: championQueryStatus,
+        championPrediction,
+        predictionsOpen: championPredictionsOpen,
+        pathname: location.pathname,
+      })
+    ) {
       navigate('/champion-pick', { replace: true });
       return;
     }
 
     navigate('/matches', { replace: true });
-  }, [championPrediction, isAdmin, isAuthenticated, loading, location, navigate, passwordRecovery]);
+  }, [
+    championPrediction,
+    championPredictionsOpen,
+    championQueryStatus,
+    isAdmin,
+    isAuthenticated,
+    loading,
+    location,
+    navigate,
+    passwordRecovery,
+  ]);
 
   return null;
 }

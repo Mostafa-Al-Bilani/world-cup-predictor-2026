@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { authService } from '../services/authService';
 import { championService } from '../services/championService';
 import { profileService } from '../services/profileService';
@@ -10,8 +10,12 @@ export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [profile, setProfile] = useState(null);
   const [championPrediction, setChampionPrediction] = useState(null);
+  const [championQueryStatus, setChampionQueryStatus] = useState('idle');
+  const [championQueryError, setChampionQueryError] = useState(null);
+  const [championPredictionsOpen, setChampionPredictionsOpen] = useState(true);
   const [loading, setLoading] = useState(true);
   const [passwordRecovery, setPasswordRecovery] = useState(false);
+  const championSyncVersionRef = useRef(0);
 
   const loadProfile = useCallback(async (activeUser) => {
     if (!activeUser?.id) {
@@ -23,15 +27,59 @@ export function AuthProvider({ children }) {
     return nextProfile;
   }, []);
 
-  const loadChampionPrediction = useCallback(async (activeUser, activeProfile) => {
+  const syncChampionPrediction = useCallback(async (
+    activeUser,
+    activeProfile,
+    { email, registrationChampion } = {},
+  ) => {
+    const syncVersion = championSyncVersionRef.current + 1;
+    championSyncVersionRef.current = syncVersion;
+
     if (!activeUser?.id || activeProfile?.is_admin) {
-      setChampionPrediction(null);
+      if (syncVersion === championSyncVersionRef.current) {
+        setChampionPrediction(null);
+        setChampionQueryStatus('ready');
+        setChampionQueryError(null);
+        setChampionPredictionsOpen(true);
+      }
       return null;
     }
 
-    const prediction = await championService.getMyPrediction(activeUser.id);
-    setChampionPrediction(prediction);
-    return prediction;
+    if (syncVersion === championSyncVersionRef.current) {
+      setChampionQueryStatus('loading');
+      setChampionQueryError(null);
+    }
+
+    try {
+      const open = await championService.areChampionPredictionsOpen();
+      let prediction = await championService.getMyPrediction(activeUser.id);
+
+      if (!prediction && open) {
+        prediction = await championService.persistMissingChampionPrediction({
+          userId: activeUser.id,
+          email: email ?? activeUser.email,
+          registrationChampion,
+        });
+      }
+
+      if (syncVersion !== championSyncVersionRef.current) {
+        return prediction;
+      }
+
+      setChampionPredictionsOpen(open);
+      setChampionPrediction(prediction);
+      setChampionQueryStatus('ready');
+      setChampionQueryError(null);
+      return prediction;
+    } catch (error) {
+      if (syncVersion !== championSyncVersionRef.current) {
+        throw error;
+      }
+
+      setChampionQueryError(error);
+      setChampionQueryStatus('error');
+      return null;
+    }
   }, []);
 
   const refreshUser = useCallback(async () => {
@@ -40,11 +88,13 @@ export function AuthProvider({ children }) {
       const activeUser = await authService.getSession();
       setUser(activeUser);
       const nextProfile = await loadProfile(activeUser);
-      await loadChampionPrediction(activeUser, nextProfile);
+      await syncChampionPrediction(activeUser, nextProfile, {
+        email: activeUser?.email,
+      });
     } finally {
       setLoading(false);
     }
-  }, [loadChampionPrediction, loadProfile]);
+  }, [loadProfile, syncChampionPrediction]);
 
   useEffect(() => {
     refreshUser();
@@ -57,14 +107,24 @@ export function AuthProvider({ children }) {
       if (event === 'PASSWORD_RECOVERY') {
         setPasswordRecovery(true);
       }
-      setUser(session?.user ?? null);
-      loadProfile(session?.user ?? null).then((nextProfile) => {
-        loadChampionPrediction(session?.user ?? null, nextProfile);
-      }).catch(() => setChampionPrediction(null));
+
+      const nextUser = session?.user ?? null;
+      setUser(nextUser);
+
+      loadProfile(nextUser)
+        .then((nextProfile) =>
+          syncChampionPrediction(nextUser, nextProfile, {
+            email: nextUser?.email,
+          }),
+        )
+        .catch((error) => {
+          setChampionQueryError(error);
+          setChampionQueryStatus('error');
+        });
     });
 
     return () => subscription.unsubscribe();
-  }, [loadChampionPrediction, loadProfile, refreshUser]);
+  }, [loadProfile, refreshUser, syncChampionPrediction]);
 
   const signUp = useCallback(async (payload) => {
     const result = await authService.signUp(payload);
@@ -73,32 +133,30 @@ export function AuthProvider({ children }) {
       setUser(null);
       setProfile(null);
       setChampionPrediction(null);
+      setChampionQueryStatus('idle');
+      setChampionQueryError(null);
       return result;
     }
 
     const nextUser = result?.user;
     setUser(nextUser);
     const nextProfile = await loadProfile(nextUser);
-    if (payload.champion && !nextProfile?.is_admin) {
-      try {
-        const prediction = await championService.setPrediction({ userId: nextUser.id, predictedTeam: payload.champion });
-        setChampionPrediction(prediction);
-      } catch {
-        await loadChampionPrediction(nextUser, nextProfile);
-      }
-    } else {
-      await loadChampionPrediction(nextUser, nextProfile);
-    }
+    await syncChampionPrediction(nextUser, nextProfile, {
+      email: payload.email ?? nextUser?.email,
+      registrationChampion: payload.champion,
+    });
     return result;
-  }, [loadChampionPrediction, loadProfile]);
+  }, [loadProfile, syncChampionPrediction]);
 
   const signIn = useCallback(async (payload) => {
     const nextUser = await authService.signIn(payload);
     setPasswordRecovery(false);
     setUser(nextUser);
     const nextProfile = await loadProfile(nextUser);
-    await loadChampionPrediction(nextUser, nextProfile);
-  }, [loadChampionPrediction, loadProfile]);
+    await syncChampionPrediction(nextUser, nextProfile, {
+      email: payload.email ?? nextUser?.email,
+    });
+  }, [loadProfile, syncChampionPrediction]);
 
   const signOut = useCallback(async () => {
     await authService.signOut();
@@ -106,17 +164,29 @@ export function AuthProvider({ children }) {
     setUser(null);
     setProfile(null);
     setChampionPrediction(null);
+    setChampionQueryStatus('idle');
+    setChampionQueryError(null);
+    setChampionPredictionsOpen(true);
   }, []);
 
   const clearPasswordRecovery = useCallback(() => {
     setPasswordRecovery(false);
   }, []);
 
+  const refreshChampionPrediction = useCallback(async () => {
+    return syncChampionPrediction(user, profile, {
+      email: user?.email,
+    });
+  }, [profile, syncChampionPrediction, user]);
+
   const value = useMemo(
     () => ({
       user,
       profile,
       championPrediction,
+      championQueryStatus,
+      championQueryError,
+      championPredictionsOpen,
       loading,
       isAuthenticated: Boolean(user),
       isAdmin: Boolean(profile?.is_admin),
@@ -127,16 +197,19 @@ export function AuthProvider({ children }) {
       signIn,
       signOut,
       refreshUser,
-      refreshChampionPrediction: () => loadChampionPrediction(user, profile),
+      refreshChampionPrediction,
       clearPasswordRecovery,
     }),
     [
       championPrediction,
+      championPredictionsOpen,
+      championQueryError,
+      championQueryStatus,
       clearPasswordRecovery,
-      loadChampionPrediction,
       loading,
       passwordRecovery,
       profile,
+      refreshChampionPrediction,
       refreshUser,
       signIn,
       signOut,

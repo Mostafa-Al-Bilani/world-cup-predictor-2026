@@ -1,4 +1,9 @@
 import { worldCupMatches } from '../data/matches';
+import {
+  clearPendingChampionPick,
+  readPendingChampionPick,
+} from '../utils/championPick';
+import { isChampionPredictionAlreadyLockedError } from '../utils/championGate';
 import { normalizeChampionTeam, validateUuid } from '../utils/validation';
 import { isDemoMode, supabase } from './supabaseClient';
 import { localStore } from './localStore';
@@ -44,6 +49,13 @@ const getTeamsFromMatches = (matches) =>
         .filter(isSelectableTeam),
     ),
   ).sort((a, b) => a.localeCompare(b));
+
+const isTournamentChampionDecided = (matches) =>
+  (matches ?? []).some((match) => {
+    if (match.status !== 'finished') return false;
+    if (match.match_number === 104) return true;
+    return /final/i.test(String(match.stage ?? ''));
+  });
 
 const getCurrentUserId = async () => {
   const { data, error } = await supabase.auth.getUser();
@@ -102,6 +114,58 @@ export const championService = {
     if (error) throw error;
 
     return data;
+  },
+
+  async areChampionPredictionsOpen() {
+    if (isDemoMode) {
+      const store = localStore.getStore();
+      const matches = store.matches?.length ? store.matches : worldCupMatches;
+      return !isTournamentChampionDecided(matches);
+    }
+
+    const { data, error } = await supabase
+      .from('matches')
+      .select('status, stage, match_number')
+      .eq('status', 'finished')
+      .or('stage.ilike.%final%,match_number.eq.104')
+      .limit(5);
+
+    if (error) throw error;
+
+    return !isTournamentChampionDecided(data ?? []);
+  },
+
+  async persistMissingChampionPrediction({ userId, email, registrationChampion }) {
+    if (!userId) return null;
+
+    const existing = await this.getMyPrediction(userId);
+    if (existing) return existing;
+
+    const open = await this.areChampionPredictionsOpen();
+    if (!open) return null;
+
+    let team = String(registrationChampion ?? '').trim();
+    if (!team) {
+      const teams = await this.getAvailableTeams();
+      team = readPendingChampionPick(email, teams);
+    }
+
+    if (!team) return null;
+
+    try {
+      const saved = await this.setPrediction({ userId, predictedTeam: team });
+      clearPendingChampionPick();
+      return saved;
+    } catch (error) {
+      if (isChampionPredictionAlreadyLockedError(error)) {
+        const locked = await this.getMyPrediction(userId);
+        if (locked) {
+          clearPendingChampionPick();
+        }
+        return locked;
+      }
+      throw error;
+    }
   },
 
   async setPrediction({ userId, predictedTeam }) {

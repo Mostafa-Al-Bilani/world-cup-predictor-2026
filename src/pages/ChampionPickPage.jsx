@@ -6,10 +6,7 @@ import { LoadingSpinner } from "../components/LoadingSpinner";
 import { TeamPicker } from "../components/TeamPicker";
 import { useAuth } from "../context/AuthContext";
 import { championService } from "../services/championService";
-import {
-  clearPendingChampionPick,
-  readPendingChampionPick,
-} from "../utils/championPick";
+import { clearPendingChampionPick } from "../utils/championPick";
 import { getSafeErrorMessage } from "../utils/errors";
 
 export function ChampionPickPage() {
@@ -25,7 +22,7 @@ export function ChampionPickPage() {
   useEffect(() => {
     let cancelled = false;
 
-    async function loadTeamsAndSavePendingPick() {
+    async function loadTeams() {
       setLoading(true);
 
       try {
@@ -33,52 +30,25 @@ export function ChampionPickPage() {
 
         if (cancelled) return;
 
-        const pendingTeam = readPendingChampionPick(user?.email, rows);
-
         setTeams(rows);
-        setSelectedTeam((current) => current || pendingTeam || rows[0] || "");
-
-        if (!championPrediction && pendingTeam && user?.id) {
-          setSaving(true);
-
-          await championService.setPrediction({
-            userId: user.id,
-            predictedTeam: pendingTeam,
-          });
-
-          clearPendingChampionPick();
-          await refreshChampionPrediction();
-
-          if (!cancelled) {
-            toast.success("World Cup winner pick locked.");
-            navigate(location.state?.from ?? "/matches", { replace: true });
-          }
-        }
+        setSelectedTeam((current) => current || rows[0] || "");
       } catch (error) {
         toast.error(
           getSafeErrorMessage(error, "Could not load World Cup teams."),
         );
       } finally {
         if (!cancelled) {
-          setSaving(false);
           setLoading(false);
         }
       }
     }
 
-    loadTeamsAndSavePendingPick();
+    loadTeams();
 
     return () => {
       cancelled = true;
     };
-  }, [
-    championPrediction,
-    location.state?.from,
-    navigate,
-    refreshChampionPrediction,
-    user?.email,
-    user?.id,
-  ]);
+  }, []);
 
   const submit = async (event) => {
     event.preventDefault();
