@@ -1,5 +1,6 @@
 export const CHAMPION_GATE_ALLOWED_PATHS = new Set([
   '/champion-pick',
+  '/setup-username',
   '/login',
   '/register',
   '/forgot-password',
@@ -14,11 +15,13 @@ export function shouldPromptForChampionPrediction({
   championPrediction,
   predictionsOpen,
   pathname,
+  usernameComplete = true,
   allowedPaths = CHAMPION_GATE_ALLOWED_PATHS,
 }) {
   if (authLoading) return false;
   if (!isAuthenticated) return false;
   if (isAdmin) return false;
+  if (!usernameComplete) return false;
   if (allowedPaths.has(pathname)) return false;
   if (queryStatus === 'loading' || queryStatus === 'idle') return false;
   if (queryStatus === 'error') return false;

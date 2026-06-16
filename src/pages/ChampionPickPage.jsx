@@ -12,7 +12,12 @@ import { getSafeErrorMessage } from "../utils/errors";
 export function ChampionPickPage() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { championPrediction, refreshChampionPrediction, user } = useAuth();
+  const {
+    championPrediction,
+    championPredictionsOpen,
+    refreshChampionPrediction,
+    user,
+  } = useAuth();
 
   const [teams, setTeams] = useState([]);
   const [selectedTeam, setSelectedTeam] = useState("");
@@ -115,6 +120,22 @@ export function ChampionPickPage() {
           <div className="mt-4 rounded-lg border border-emerald-300/30 bg-emerald-300/10 px-4 py-3 text-sm text-emerald-100">
             Your pick is locked:{" "}
             <strong>{championPrediction.predicted_team}</strong>.
+          </div>
+        ) : !championPredictionsOpen ? (
+          <div className="mt-4 space-y-4">
+            <div className="rounded-lg border border-amber-300/30 bg-amber-300/10 px-4 py-3 text-sm text-amber-100">
+              Champion predictions are closed for this tournament. You can
+              continue using the app without selecting a champion pick.
+            </div>
+            <button
+              type="button"
+              onClick={() =>
+                navigate(location.state?.from ?? "/matches", { replace: true })
+              }
+              className="w-full rounded-full border border-white/15 px-5 py-3 text-sm font-black text-white transition hover:bg-white hover:text-slate-950"
+            >
+              Continue to matches
+            </button>
           </div>
         ) : (
           <>

@@ -69,8 +69,24 @@ test("does not prompt when champion query failed", () => {
   );
 });
 
+test("does not prompt when username is incomplete", () => {
+  assert.equal(
+    shouldPromptForChampionPrediction({
+      ...basePromptArgs,
+      usernameComplete: false,
+    }),
+    false,
+  );
+});
+
 test("legacy user without prediction is prompted while predictions are open", () => {
-  assert.equal(shouldPromptForChampionPrediction(basePromptArgs), true);
+  assert.equal(
+    shouldPromptForChampionPrediction({
+      ...basePromptArgs,
+      usernameComplete: true,
+    }),
+    true,
+  );
 });
 
 test("user with existing prediction is never prompted", () => {

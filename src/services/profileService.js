@@ -1,6 +1,7 @@
 import { isDemoMode, supabase } from './supabaseClient';
 import { localStore } from './localStore';
 import { normalizeLeaderboardUser, sortLeaderboardUsers } from '../utils/leaderboard';
+import { normalizeUsername } from '../utils/validation';
 
 const recalculateProfile = (profile, store) => {
   const userPredictions = store.predictions.filter((prediction) => prediction.user_id === profile.id);
@@ -35,6 +36,43 @@ export const profileService = {
     }
 
     const { data, error } = await supabase.from('profiles').select('*').eq('id', userId).maybeSingle();
+    if (error) throw error;
+    return data;
+  },
+  async ensureProfile(userId) {
+    if (!userId) return null;
+
+    if (isDemoMode) {
+      return this.getProfile(userId);
+    }
+
+    const existing = await this.getProfile(userId);
+    if (existing) return existing;
+
+    const { data, error } = await supabase.rpc('ensure_user_profile');
+    if (error) throw error;
+    return data;
+  },
+  async setUsername(userId, username) {
+    const normalizedUsername = normalizeUsername(username);
+
+    if (isDemoMode) {
+      const store = localStore.getStore();
+      const profile = store.profiles.find((item) => item.id === userId);
+      if (!profile) throw new Error('Profile not found.');
+      if (profile.username?.trim()) throw new Error('Username is already set.');
+      const duplicate = store.profiles.some(
+        (item) =>
+          item.id !== userId &&
+          String(item.username ?? '').trim().toLowerCase() === normalizedUsername.toLowerCase(),
+      );
+      if (duplicate) throw new Error('Username is already taken.');
+      return localStore.upsertProfile({ ...profile, username: normalizedUsername });
+    }
+
+    const { data, error } = await supabase.rpc('set_profile_username', {
+      target_username: normalizedUsername,
+    });
     if (error) throw error;
     return data;
   },

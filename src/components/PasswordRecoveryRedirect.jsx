@@ -1,19 +1,16 @@
 import { useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { shouldPromptForChampionPrediction } from '../utils/championGate';
-
-const isSupabaseAuthCallback = (location) => {
-  const rawHash = window.location.hash;
-  const rawSearch = window.location.search;
-  const routeText = `${location.pathname}${location.search}`;
-
-  return (
-    /(?:^|[?#/&])(access_token|refresh_token|token_hash|type|code)=/i.test(rawHash) ||
-    /(?:^|[?&])(access_token|refresh_token|token_hash|type|code)=/i.test(rawSearch) ||
-    /^\/?(access_token|refresh_token|token_hash|type|code)=/i.test(routeText)
-  );
-};
+import {
+  clearOAuthReturnTo,
+  clearSupabaseAuthCallbackParams,
+  isSupabaseAuthCallback,
+  readOAuthReturnTo,
+} from '../utils/authRedirect';
+import {
+  getOnboardingRedirectPath,
+  resolveOnboardingStatus,
+} from '../utils/onboarding';
 
 export function PasswordRecoveryRedirect() {
   const {
@@ -24,6 +21,8 @@ export function PasswordRecoveryRedirect() {
     isAuthenticated,
     loading,
     passwordRecovery,
+    profile,
+    profileQueryStatus,
   } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
@@ -31,33 +30,42 @@ export function PasswordRecoveryRedirect() {
   useEffect(() => {
     if (passwordRecovery && location.pathname !== '/reset-password') {
       navigate('/reset-password', { replace: true });
+      return;
     }
 
-    if (loading || passwordRecovery || !isSupabaseAuthCallback(location)) {
+    if (loading || passwordRecovery || !isSupabaseAuthCallback()) {
       return;
     }
 
     if (!isAuthenticated) {
       navigate('/login', { replace: true });
+      clearSupabaseAuthCallbackParams();
       return;
     }
 
-    if (
-      shouldPromptForChampionPrediction({
-        authLoading: loading,
-        isAuthenticated,
-        isAdmin,
-        queryStatus: championQueryStatus,
-        championPrediction,
-        predictionsOpen: championPredictionsOpen,
-        pathname: location.pathname,
-      })
-    ) {
-      navigate('/champion-pick', { replace: true });
+    const onboardingStatus = resolveOnboardingStatus({
+      authLoading: false,
+      isAuthenticated,
+      isAdmin,
+      profile,
+      profileQueryStatus,
+      championQueryStatus,
+      championPrediction,
+      championPredictionsOpen,
+      pathname: location.pathname,
+    });
+
+    const onboardingPath = getOnboardingRedirectPath(onboardingStatus);
+    if (onboardingPath) {
+      navigate(onboardingPath, { replace: true, state: { from: readOAuthReturnTo() ?? '/matches' } });
+      clearOAuthReturnTo();
+      clearSupabaseAuthCallbackParams();
       return;
     }
 
-    navigate('/matches', { replace: true });
+    navigate(readOAuthReturnTo() ?? '/matches', { replace: true });
+    clearOAuthReturnTo();
+    clearSupabaseAuthCallbackParams();
   }, [
     championPrediction,
     championPredictionsOpen,
@@ -65,9 +73,11 @@ export function PasswordRecoveryRedirect() {
     isAdmin,
     isAuthenticated,
     loading,
-    location,
+    location.pathname,
     navigate,
     passwordRecovery,
+    profile,
+    profileQueryStatus,
   ]);
 
   return null;

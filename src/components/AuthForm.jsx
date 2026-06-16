@@ -3,6 +3,7 @@ import { Link, useLocation, useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { PasswordField } from './PasswordField';
 import { TeamPicker } from './TeamPicker';
+import { GoogleSignInButton, AuthDivider } from './GoogleSignInButton';
 import { useAuth } from '../context/AuthContext';
 import { authService } from '../services/authService';
 import { championService } from '../services/championService';
@@ -170,6 +171,12 @@ export function AuthForm({ mode }) {
         className="w-full min-w-0 max-w-[calc(100vw-2rem)] scroll-mt-24 rounded-lg border border-white/10 bg-slate-950/76 p-6 shadow-2xl backdrop-blur lg:max-w-none"
       >
         <h2 className="text-2xl font-black">{isRegister ? 'Register' : 'Log in'}</h2>
+
+        <div className="mt-6">
+          <GoogleSignInButton redirectPath={isRegister ? '/register' : '/login'} />
+        </div>
+
+        <AuthDivider />
 
         {errorMessage ? (
           <div className="mt-4 rounded-lg border border-rose-300/30 bg-rose-300/10 px-4 py-3 text-sm text-rose-100">

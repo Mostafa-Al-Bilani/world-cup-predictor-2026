@@ -43,6 +43,10 @@ Do not replace this failure state with a fabricated team list.
 
 The login form uses Supabase email and password authentication.
 
+Users can also choose **Continue with Google** on both the login and registration screens. Google sign-in uses the same Supabase OAuth action in both places and returns through the configured hash routes.
+
+Google users without a chosen username are redirected to `#/setup-username` before accessing scoreboard features. See [Google OAuth Setup](./google-oauth-setup.md) for dashboard configuration.
+
 Users with unconfirmed email addresses receive a safe message and can resend the confirmation email.
 
 Authentication form focus and scrolling use cancellable timers so route changes or component unmounts do not leave stale focus callbacks.
@@ -60,15 +64,15 @@ When confirmation is required:
 
 ## Champion gate
 
-Authenticated non-admin users without a champion prediction are redirected to:
+Authenticated non-admin users complete onboarding in this order:
 
-```text
-#/champion-pick
-```
+1. ensure a profile row exists;
+2. choose a unique username when missing (`#/setup-username`);
+3. choose a champion prediction when no row exists and predictions are still open (`#/champion-pick`).
 
-The champion pick locks after submission.
+The champion picker uses `public.world_cup_winner_predictions` as the source of truth. Users with an existing prediction are never prompted again.
 
-Admins are not forced through the champion gate.
+Admins are not forced through onboarding gates.
 
 ## Sign out
 
@@ -123,9 +127,11 @@ Add:
 ```text
 http://localhost:5173/
 http://localhost:5173/#/login
+http://localhost:5173/#/register
 http://localhost:5173/#/reset-password
 https://<github-username>.github.io/<repository-name>/
 https://<github-username>.github.io/<repository-name>/#/login
+https://<github-username>.github.io/<repository-name>/#/register
 https://<github-username>.github.io/<repository-name>/#/reset-password
 ```
 

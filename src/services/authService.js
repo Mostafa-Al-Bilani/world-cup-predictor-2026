@@ -1,5 +1,6 @@
 import { isDemoMode, supabase } from './supabaseClient';
 import { localStore } from './localStore';
+import { getAppBaseUrl, getHashRouteRedirectUrl } from '../utils/authRedirect';
 import { normalizeEmail, normalizeUsername, requirePassword, validatePassword } from '../utils/validation';
 
 const makeProfile = ({ id, email, username, isAdmin = false }) => ({
@@ -17,8 +18,6 @@ const makeProfile = ({ id, email, username, isAdmin = false }) => ({
   created_at: new Date().toISOString(),
 });
 
-const getAppBaseUrl = () => `${window.location.origin}${import.meta.env.BASE_URL}`;
-const getHashRouteRedirectUrl = (path) => `${getAppBaseUrl()}#${path.startsWith('/') ? path : `/${path}`}`;
 const getEmailConfirmationRedirectUrl = () => getHashRouteRedirectUrl('/login');
 const getPasswordResetRedirectUrl = () => getAppBaseUrl();
 
@@ -94,6 +93,21 @@ export const authService = {
     const { data, error } = await supabase.auth.signInWithPassword({ email: normalizedEmail, password: normalizedPassword });
     if (error) throw error;
     return data.user;
+  },
+  async signInWithGoogle({ redirectPath = '/login' } = {}) {
+    if (isDemoMode) {
+      throw new Error('Google sign-in requires Supabase authentication.');
+    }
+
+    const { data, error } = await supabase.auth.signInWithOAuth({
+      provider: 'google',
+      options: {
+        redirectTo: getHashRouteRedirectUrl(redirectPath),
+      },
+    });
+
+    if (error) throw error;
+    return data;
   },
   async signOut() {
     if (isDemoMode) {

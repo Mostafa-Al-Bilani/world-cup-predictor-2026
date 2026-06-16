@@ -3,12 +3,16 @@ import { authService } from '../services/authService';
 import { championService } from '../services/championService';
 import { profileService } from '../services/profileService';
 import { isDemoMode, isSupabaseConfigured, supabase } from '../services/supabaseClient';
+import { clearSupabaseAuthCallbackParams } from '../utils/authRedirect';
+import { isUsernameComplete } from '../utils/onboarding';
 
 const AuthContext = createContext(null);
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [profile, setProfile] = useState(null);
+  const [profileQueryStatus, setProfileQueryStatus] = useState('idle');
+  const [profileQueryError, setProfileQueryError] = useState(null);
   const [championPrediction, setChampionPrediction] = useState(null);
   const [championQueryStatus, setChampionQueryStatus] = useState('idle');
   const [championQueryError, setChampionQueryError] = useState(null);
@@ -16,15 +20,34 @@ export function AuthProvider({ children }) {
   const [loading, setLoading] = useState(true);
   const [passwordRecovery, setPasswordRecovery] = useState(false);
   const championSyncVersionRef = useRef(0);
+  const authSyncVersionRef = useRef(0);
 
-  const loadProfile = useCallback(async (activeUser) => {
+  const syncProfile = useCallback(async (activeUser) => {
     if (!activeUser?.id) {
       setProfile(null);
+      setProfileQueryStatus('ready');
+      setProfileQueryError(null);
       return null;
     }
-    const nextProfile = await profileService.getProfile(activeUser.id);
-    setProfile(nextProfile);
-    return nextProfile;
+
+    setProfileQueryStatus('loading');
+    setProfileQueryError(null);
+
+    try {
+      let nextProfile = await profileService.getProfile(activeUser.id);
+      if (!nextProfile) {
+        nextProfile = await profileService.ensureProfile(activeUser.id);
+      }
+
+      setProfile(nextProfile);
+      setProfileQueryStatus('ready');
+      return nextProfile;
+    } catch (error) {
+      setProfile(null);
+      setProfileQueryError(error);
+      setProfileQueryStatus('error');
+      throw error;
+    }
   }, []);
 
   const syncChampionPrediction = useCallback(async (
@@ -54,7 +77,11 @@ export function AuthProvider({ children }) {
       const open = await championService.areChampionPredictionsOpen();
       let prediction = await championService.getMyPrediction(activeUser.id);
 
-      if (!prediction && open) {
+      if (
+        !prediction &&
+        open &&
+        isUsernameComplete(activeProfile)
+      ) {
         prediction = await championService.persistMissingChampionPrediction({
           userId: activeUser.id,
           email: email ?? activeUser.email,
@@ -82,19 +109,51 @@ export function AuthProvider({ children }) {
     }
   }, []);
 
+  const syncAuthenticatedState = useCallback(async (
+    activeUser,
+    { email, registrationChampion } = {},
+  ) => {
+    const syncVersion = authSyncVersionRef.current + 1;
+    authSyncVersionRef.current = syncVersion;
+
+    setUser(activeUser);
+
+    if (!activeUser?.id) {
+      setProfile(null);
+      setProfileQueryStatus('ready');
+      setProfileQueryError(null);
+      setChampionPrediction(null);
+      setChampionQueryStatus('ready');
+      setChampionQueryError(null);
+      setChampionPredictionsOpen(true);
+      return { profile: null, championPrediction: null };
+    }
+
+    const nextProfile = await syncProfile(activeUser);
+    if (syncVersion !== authSyncVersionRef.current) {
+      return { profile: nextProfile, championPrediction: null };
+    }
+
+    const prediction = await syncChampionPrediction(activeUser, nextProfile, {
+      email: email ?? activeUser.email,
+      registrationChampion,
+    });
+
+    return { profile: nextProfile, championPrediction: prediction };
+  }, [syncChampionPrediction, syncProfile]);
+
   const refreshUser = useCallback(async () => {
     setLoading(true);
     try {
       const activeUser = await authService.getSession();
-      setUser(activeUser);
-      const nextProfile = await loadProfile(activeUser);
-      await syncChampionPrediction(activeUser, nextProfile, {
+      await syncAuthenticatedState(activeUser, {
         email: activeUser?.email,
       });
     } finally {
       setLoading(false);
+      clearSupabaseAuthCallbackParams();
     }
-  }, [loadProfile, syncChampionPrediction]);
+  }, [syncAuthenticatedState]);
 
   useEffect(() => {
     refreshUser();
@@ -108,23 +167,17 @@ export function AuthProvider({ children }) {
         setPasswordRecovery(true);
       }
 
-      const nextUser = session?.user ?? null;
-      setUser(nextUser);
-
-      loadProfile(nextUser)
-        .then((nextProfile) =>
-          syncChampionPrediction(nextUser, nextProfile, {
-            email: nextUser?.email,
-          }),
-        )
-        .catch((error) => {
-          setChampionQueryError(error);
-          setChampionQueryStatus('error');
+      syncAuthenticatedState(session?.user ?? null, {
+        email: session?.user?.email,
+      })
+        .catch(() => undefined)
+        .finally(() => {
+          clearSupabaseAuthCallbackParams();
         });
     });
 
     return () => subscription.unsubscribe();
-  }, [loadProfile, refreshUser, syncChampionPrediction]);
+  }, [refreshUser, syncAuthenticatedState]);
 
   const signUp = useCallback(async (payload) => {
     const result = await authService.signUp(payload);
@@ -132,6 +185,8 @@ export function AuthProvider({ children }) {
     if (result?.needsEmailConfirmation) {
       setUser(null);
       setProfile(null);
+      setProfileQueryStatus('idle');
+      setProfileQueryError(null);
       setChampionPrediction(null);
       setChampionQueryStatus('idle');
       setChampionQueryError(null);
@@ -139,30 +194,48 @@ export function AuthProvider({ children }) {
     }
 
     const nextUser = result?.user;
-    setUser(nextUser);
-    const nextProfile = await loadProfile(nextUser);
-    await syncChampionPrediction(nextUser, nextProfile, {
+    await syncAuthenticatedState(nextUser, {
       email: payload.email ?? nextUser?.email,
       registrationChampion: payload.champion,
     });
     return result;
-  }, [loadProfile, syncChampionPrediction]);
+  }, [syncAuthenticatedState]);
 
   const signIn = useCallback(async (payload) => {
     const nextUser = await authService.signIn(payload);
     setPasswordRecovery(false);
-    setUser(nextUser);
-    const nextProfile = await loadProfile(nextUser);
-    await syncChampionPrediction(nextUser, nextProfile, {
+    await syncAuthenticatedState(nextUser, {
       email: payload.email ?? nextUser?.email,
     });
-  }, [loadProfile, syncChampionPrediction]);
+  }, [syncAuthenticatedState]);
+
+  const signInWithGoogle = useCallback(async ({ redirectPath = '/login' } = {}) => {
+    setPasswordRecovery(false);
+    return authService.signInWithGoogle({ redirectPath });
+  }, []);
+
+  const completeUsername = useCallback(async (username) => {
+    if (!user?.id) {
+      throw new Error('You must be logged in to choose a username.');
+    }
+
+    const savedProfile = await profileService.setUsername(user.id, username);
+    setProfile(savedProfile);
+    setProfileQueryStatus('ready');
+    setProfileQueryError(null);
+    await syncChampionPrediction(user, savedProfile, {
+      email: user.email,
+    });
+    return savedProfile;
+  }, [syncChampionPrediction, user]);
 
   const signOut = useCallback(async () => {
     await authService.signOut();
     setPasswordRecovery(false);
     setUser(null);
     setProfile(null);
+    setProfileQueryStatus('idle');
+    setProfileQueryError(null);
     setChampionPrediction(null);
     setChampionQueryStatus('idle');
     setChampionQueryError(null);
@@ -179,10 +252,21 @@ export function AuthProvider({ children }) {
     });
   }, [profile, syncChampionPrediction, user]);
 
+  const refreshProfile = useCallback(async () => {
+    if (!user?.id) return null;
+    const nextProfile = await syncProfile(user);
+    await syncChampionPrediction(user, nextProfile, {
+      email: user.email,
+    });
+    return nextProfile;
+  }, [syncChampionPrediction, syncProfile, user]);
+
   const value = useMemo(
     () => ({
       user,
       profile,
+      profileQueryStatus,
+      profileQueryError,
       championPrediction,
       championQueryStatus,
       championQueryError,
@@ -195,8 +279,11 @@ export function AuthProvider({ children }) {
       passwordRecovery,
       signUp,
       signIn,
+      signInWithGoogle,
+      completeUsername,
       signOut,
       refreshUser,
+      refreshProfile,
       refreshChampionPrediction,
       clearPasswordRecovery,
     }),
@@ -206,12 +293,17 @@ export function AuthProvider({ children }) {
       championQueryError,
       championQueryStatus,
       clearPasswordRecovery,
+      completeUsername,
       loading,
       passwordRecovery,
       profile,
+      profileQueryError,
+      profileQueryStatus,
       refreshChampionPrediction,
+      refreshProfile,
       refreshUser,
       signIn,
+      signInWithGoogle,
       signOut,
       signUp,
       user,

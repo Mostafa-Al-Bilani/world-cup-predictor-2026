@@ -1,7 +1,7 @@
 import { Toaster } from "react-hot-toast";
 import { HashRouter, Route, Routes } from "react-router-dom";
 import { AdminRoute } from "./components/AdminRoute";
-import { ChampionGate } from "./components/ChampionGate";
+import { OnboardingGate } from "./components/OnboardingGate";
 import { PasswordRecoveryRedirect } from "./components/PasswordRecoveryRedirect";
 import { ProtectedRoute } from "./components/ProtectedRoute";
 import { ScrollToTop } from "./components/ScrollToTop";
@@ -22,6 +22,7 @@ import { NotFoundPage } from "./pages/NotFoundPage";
 import { RegisterPage } from "./pages/RegisterPage";
 import { ResetPasswordPage } from "./pages/ResetPasswordPage";
 import { ScoreboardPage } from "./pages/ScoreboardPage";
+import { UsernameSetupPage } from "./pages/UsernameSetupPage";
 import { hasSupabaseConfigurationError } from "./services/supabaseClient";
 
 export function App() {
@@ -34,7 +35,7 @@ export function App() {
       <HashRouter>
         <ScrollToTop />
         <PasswordRecoveryRedirect />
-        <ChampionGate />
+        <OnboardingGate />
 
         <Routes>
           <Route element={<AppLayout />}>
@@ -43,6 +44,15 @@ export function App() {
             <Route path="register" element={<RegisterPage />} />
             <Route path="forgot-password" element={<ForgotPasswordPage />} />
             <Route path="reset-password" element={<ResetPasswordPage />} />
+
+            <Route
+              path="setup-username"
+              element={
+                <ProtectedRoute>
+                  <UsernameSetupPage />
+                </ProtectedRoute>
+              }
+            />
 
             <Route
               path="champion-pick"
