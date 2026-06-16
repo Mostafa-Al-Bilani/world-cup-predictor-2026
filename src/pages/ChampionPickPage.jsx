@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import toast from "react-hot-toast";
 import { useLocation, useNavigate } from "react-router-dom";
 import { Crown } from "lucide-react";
@@ -6,7 +6,10 @@ import { LoadingSpinner } from "../components/LoadingSpinner";
 import { TeamPicker } from "../components/TeamPicker";
 import { useAuth } from "../context/AuthContext";
 import { championService } from "../services/championService";
-import { clearPendingChampionPick } from "../utils/championPick";
+import {
+  isChampionPredictionLocked,
+} from "../utils/championGate";
+import { resolveOnboardingDestination } from "../utils/onboarding";
 import { getSafeErrorMessage } from "../utils/errors";
 
 export function ChampionPickPage() {
@@ -15,14 +18,19 @@ export function ChampionPickPage() {
   const {
     championPrediction,
     championPredictionsOpen,
-    refreshChampionPrediction,
-    user,
+    lockChampionPrediction,
   } = useAuth();
 
   const [teams, setTeams] = useState([]);
   const [selectedTeam, setSelectedTeam] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [pendingDestination, setPendingDestination] = useState(null);
+  const exitOnceRef = useRef(false);
+
+  const safeDestination = resolveOnboardingDestination({
+    locationState: location.state,
+  });
 
   useEffect(() => {
     let cancelled = false;
@@ -55,21 +63,45 @@ export function ChampionPickPage() {
     };
   }, []);
 
+  useEffect(() => {
+    if (!pendingDestination || exitOnceRef.current) return;
+    if (!isChampionPredictionLocked(championPrediction)) return;
+
+    exitOnceRef.current = true;
+    navigate(pendingDestination, { replace: true });
+  }, [championPrediction, navigate, pendingDestination]);
+
+  useEffect(() => {
+    if (loading || saving || pendingDestination || exitOnceRef.current) return;
+    if (!isChampionPredictionLocked(championPrediction)) return;
+    if (!location.state?.from) return;
+
+    exitOnceRef.current = true;
+    navigate(safeDestination, { replace: true });
+  }, [
+    championPrediction,
+    loading,
+    location.state,
+    navigate,
+    pendingDestination,
+    safeDestination,
+    saving,
+  ]);
+
+  const continueToDestination = () => {
+    if (exitOnceRef.current) return;
+    exitOnceRef.current = true;
+    navigate(safeDestination, { replace: true });
+  };
+
   const submit = async (event) => {
     event.preventDefault();
     setSaving(true);
 
     try {
-      await championService.setPrediction({
-        userId: user.id,
-        predictedTeam: selectedTeam,
-      });
-
-      clearPendingChampionPick();
-      await refreshChampionPrediction();
-
+      await lockChampionPrediction(selectedTeam);
       toast.success("World Cup winner pick locked.");
-      navigate(location.state?.from ?? "/matches", { replace: true });
+      setPendingDestination(safeDestination);
     } catch (error) {
       toast.error(
         getSafeErrorMessage(error, "Could not save your champion pick."),
@@ -83,7 +115,7 @@ export function ChampionPickPage() {
     return <LoadingSpinner label="Loading World Cup teams" />;
   }
 
-  if (saving) {
+  if (saving || pendingDestination) {
     return <LoadingSpinner label="Locking World Cup winner pick" />;
   }
 
@@ -117,9 +149,18 @@ export function ChampionPickPage() {
         </h2>
 
         {championPrediction ? (
-          <div className="mt-4 rounded-lg border border-emerald-300/30 bg-emerald-300/10 px-4 py-3 text-sm text-emerald-100">
-            Your pick is locked:{" "}
-            <strong>{championPrediction.predicted_team}</strong>.
+          <div className="mt-4 space-y-4">
+            <div className="rounded-lg border border-emerald-300/30 bg-emerald-300/10 px-4 py-3 text-sm text-emerald-100">
+              Your pick is locked:{" "}
+              <strong>{championPrediction.predicted_team}</strong>.
+            </div>
+            <button
+              type="button"
+              onClick={continueToDestination}
+              className="w-full rounded-full bg-emerald-300 px-5 py-3 text-sm font-black text-emerald-950 transition hover:bg-white"
+            >
+              Continue to matches
+            </button>
           </div>
         ) : !championPredictionsOpen ? (
           <div className="mt-4 space-y-4">
@@ -129,9 +170,7 @@ export function ChampionPickPage() {
             </div>
             <button
               type="button"
-              onClick={() =>
-                navigate(location.state?.from ?? "/matches", { replace: true })
-              }
+              onClick={continueToDestination}
               className="w-full rounded-full border border-white/15 px-5 py-3 text-sm font-black text-white transition hover:bg-white hover:text-slate-950"
             >
               Continue to matches

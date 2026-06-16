@@ -3,7 +3,7 @@ import toast from 'react-hot-toast';
 import { useLocation, useNavigate, Navigate } from 'react-router-dom';
 import { LoadingSpinner } from '../components/LoadingSpinner';
 import { useAuth } from '../context/AuthContext';
-import { getOnboardingRedirectPath, isDuplicateUsernameError, resolveOnboardingStatus } from '../utils/onboarding';
+import { getOnboardingRedirectPath, isDuplicateUsernameError, resolveOnboardingDestination, resolveOnboardingStatus } from '../utils/onboarding';
 import { getSafeErrorMessage } from '../utils/errors';
 
 export function UsernameSetupPage() {
@@ -58,10 +58,21 @@ export function UsernameSetupPage() {
         pathname: location.pathname,
       });
 
+      const safeDestination = resolveOnboardingDestination({
+        locationState: location.state,
+      });
+
       const nextPath =
         getOnboardingRedirectPath(nextStatus) ??
-        location.state?.from ??
-        '/matches';
+        safeDestination;
+
+      if (nextPath === '/champion-pick') {
+        navigate(nextPath, {
+          replace: true,
+          state: { from: safeDestination },
+        });
+        return;
+      }
 
       navigate(nextPath, { replace: true });
     } catch (error) {
@@ -93,7 +104,12 @@ export function UsernameSetupPage() {
   }
 
   if (onboardingStatus.status === 'complete') {
-    return <Navigate to={location.state?.from ?? '/matches'} replace />;
+    return (
+      <Navigate
+        to={resolveOnboardingDestination({ locationState: location.state })}
+        replace
+      />
+    );
   }
 
   return (

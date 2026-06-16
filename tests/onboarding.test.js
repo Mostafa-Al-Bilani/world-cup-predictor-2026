@@ -6,6 +6,8 @@ import {
   getOnboardingRedirectPath,
   isDuplicateUsernameError,
   isUsernameComplete,
+  normalizeOnboardingPath,
+  resolveOnboardingDestination,
   resolveOnboardingStatus,
   shouldBlockAppRoute,
 } from '../src/utils/onboarding.js';
@@ -157,4 +159,17 @@ test('legacy user without champion is prompted while predictions are open', () =
   });
 
   assert.equal(status.status, 'champion_required');
+});
+
+test('resolveOnboardingDestination falls back to matches', () => {
+  assert.equal(resolveOnboardingDestination(), '/matches');
+  assert.equal(
+    resolveOnboardingDestination({ locationState: { from: '/login' } }),
+    '/matches',
+  );
+});
+
+test('normalizeOnboardingPath strips query and hash safely', () => {
+  assert.equal(normalizeOnboardingPath('/matches#tab=1'), '/matches');
+  assert.equal(normalizeOnboardingPath('/groups?invite=1'), '/groups');
 });

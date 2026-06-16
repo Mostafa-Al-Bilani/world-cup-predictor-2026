@@ -3,6 +3,7 @@ import { useAuth } from '../context/AuthContext';
 import { getSafeErrorMessage } from '../utils/errors';
 import {
   getOnboardingRedirectPath,
+  resolveOnboardingDestination,
   resolveOnboardingStatus,
   shouldBlockAppRoute,
 } from '../utils/onboarding';
@@ -50,7 +51,9 @@ export function OnboardingGate() {
       <Navigate
         to={redirectPath}
         replace
-        state={{ from: location.pathname }}
+        state={{
+          from: resolveOnboardingDestination({ locationState: location.state }),
+        }}
       />
     );
   }

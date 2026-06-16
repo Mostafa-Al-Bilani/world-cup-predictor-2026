@@ -1,5 +1,6 @@
 import {
   getOnboardingRedirectPath,
+  resolveOnboardingDestination,
   resolveOnboardingStatus,
 } from './onboarding.js';
 
@@ -225,14 +226,18 @@ export function resolvePostAuthRoute({
 
   const onboardingPath = getOnboardingRedirectPath(onboardingStatus);
   if (onboardingPath) {
+    const safeReturnTo = resolveOnboardingDestination({
+      oauthReturnTo: returnTo,
+    });
+
     return {
       path: onboardingPath,
-      state: { from: returnTo ?? '/matches' },
+      state: { from: safeReturnTo },
     };
   }
 
   return {
-    path: returnTo ?? '/matches',
+    path: resolveOnboardingDestination({ oauthReturnTo: returnTo }),
     state: {},
   };
 }

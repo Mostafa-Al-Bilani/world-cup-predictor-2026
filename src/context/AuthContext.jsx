@@ -15,6 +15,8 @@ import {
   resolvePostAuthRoute,
 } from '../utils/authCallback';
 import { clearOAuthReturnTo, readOAuthReturnTo } from '../utils/authRedirect';
+import { isChampionPredictionAlreadyLockedError } from '../utils/championGate';
+import { clearPendingChampionPick } from '../utils/championPick';
 import { isUsernameComplete } from '../utils/onboarding';
 
 const AuthContext = createContext(null);
@@ -488,6 +490,43 @@ export function AuthProvider({ children }) {
     setPasswordRecovery(false);
   }, []);
 
+  const lockChampionPrediction = useCallback(async (predictedTeam) => {
+    if (!user?.id) {
+      throw new Error('You must be logged in to choose a World Cup winner.');
+    }
+
+    if (championPrediction?.locked_at) {
+      return championPrediction;
+    }
+
+    try {
+      const saved = await championService.setPrediction({
+        userId: user.id,
+        predictedTeam,
+      });
+
+      clearPendingChampionPick();
+      setChampionPrediction(saved);
+      setChampionQueryStatus('ready');
+      setChampionQueryError(null);
+
+      return saved;
+    } catch (error) {
+      if (isChampionPredictionAlreadyLockedError(error)) {
+        const existing = await championService.getMyPrediction(user.id);
+        if (existing) {
+          clearPendingChampionPick();
+          setChampionPrediction(existing);
+          setChampionQueryStatus('ready');
+          setChampionQueryError(null);
+          return existing;
+        }
+      }
+
+      throw error;
+    }
+  }, [championPrediction, user]);
+
   const refreshChampionPrediction = useCallback(async () => {
     return syncChampionPrediction(user, profile, {
       email: user?.email,
@@ -537,6 +576,7 @@ export function AuthProvider({ children }) {
       signIn,
       signInWithGoogle,
       completeUsername,
+      lockChampionPrediction,
       signOut,
       refreshUser,
       refreshProfile,
@@ -558,6 +598,7 @@ export function AuthProvider({ children }) {
       consumeAuthFlash,
       dismissAuthCallbackError,
       consumePostAuthRedirect,
+      lockChampionPrediction,
       loading,
       passwordRecovery,
       profile,
