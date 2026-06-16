@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import {
@@ -26,6 +26,7 @@ export function PasswordRecoveryRedirect() {
   } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
+  const oauthHandledRef = useRef(false);
 
   useEffect(() => {
     if (passwordRecovery && location.pathname !== '/reset-password') {
@@ -36,6 +37,12 @@ export function PasswordRecoveryRedirect() {
     if (loading || passwordRecovery || !isSupabaseAuthCallback()) {
       return;
     }
+
+    if (oauthHandledRef.current) {
+      return;
+    }
+
+    oauthHandledRef.current = true;
 
     if (!isAuthenticated) {
       navigate('/login', { replace: true });
@@ -57,7 +64,10 @@ export function PasswordRecoveryRedirect() {
 
     const onboardingPath = getOnboardingRedirectPath(onboardingStatus);
     if (onboardingPath) {
-      navigate(onboardingPath, { replace: true, state: { from: readOAuthReturnTo() ?? '/matches' } });
+      navigate(onboardingPath, {
+        replace: true,
+        state: { from: readOAuthReturnTo() ?? '/matches' },
+      });
       clearOAuthReturnTo();
       clearSupabaseAuthCallbackParams();
       return;

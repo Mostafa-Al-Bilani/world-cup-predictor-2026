@@ -55,7 +55,7 @@ test('buildAppBaseUrl preserves localhost root', () => {
 });
 
 test('detects Supabase auth callback tokens in hash', () => {
-  window.location.hash = '#/login#access_token=abc&refresh_token=def';
+  window.location.hash = '#access_token=abc&refresh_token=def';
   assert.equal(isSupabaseAuthCallback(), true);
 });
 

@@ -3,7 +3,6 @@ import { authService } from '../services/authService';
 import { championService } from '../services/championService';
 import { profileService } from '../services/profileService';
 import { isDemoMode, isSupabaseConfigured, supabase } from '../services/supabaseClient';
-import { clearSupabaseAuthCallbackParams } from '../utils/authRedirect';
 import { isUsernameComplete } from '../utils/onboarding';
 
 const AuthContext = createContext(null);
@@ -151,7 +150,6 @@ export function AuthProvider({ children }) {
       });
     } finally {
       setLoading(false);
-      clearSupabaseAuthCallbackParams();
     }
   }, [syncAuthenticatedState]);
 
@@ -169,11 +167,7 @@ export function AuthProvider({ children }) {
 
       syncAuthenticatedState(session?.user ?? null, {
         email: session?.user?.email,
-      })
-        .catch(() => undefined)
-        .finally(() => {
-          clearSupabaseAuthCallbackParams();
-        });
+      }).catch(() => undefined);
     });
 
     return () => subscription.unsubscribe();
@@ -209,9 +203,9 @@ export function AuthProvider({ children }) {
     });
   }, [syncAuthenticatedState]);
 
-  const signInWithGoogle = useCallback(async ({ redirectPath = '/login' } = {}) => {
+  const signInWithGoogle = useCallback(async () => {
     setPasswordRecovery(false);
-    return authService.signInWithGoogle({ redirectPath });
+    return authService.signInWithGoogle();
   }, []);
 
   const completeUsername = useCallback(async (username) => {

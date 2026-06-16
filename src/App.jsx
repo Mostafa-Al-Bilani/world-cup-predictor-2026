@@ -2,6 +2,7 @@ import { Toaster } from "react-hot-toast";
 import { HashRouter, Route, Routes } from "react-router-dom";
 import { AdminRoute } from "./components/AdminRoute";
 import { OnboardingGate } from "./components/OnboardingGate";
+import { OAuthCallbackShell } from "./components/OAuthCallbackShell";
 import { PasswordRecoveryRedirect } from "./components/PasswordRecoveryRedirect";
 import { ProtectedRoute } from "./components/ProtectedRoute";
 import { ScrollToTop } from "./components/ScrollToTop";
@@ -34,10 +35,11 @@ export function App() {
     <AuthProvider>
       <HashRouter>
         <ScrollToTop />
-        <PasswordRecoveryRedirect />
-        <OnboardingGate />
+        <OAuthCallbackShell>
+          <PasswordRecoveryRedirect />
+          <OnboardingGate />
 
-        <Routes>
+          <Routes>
           <Route element={<AppLayout />}>
             <Route index element={<HomePage />} />
             <Route path="login" element={<LoginPage />} />
@@ -114,6 +116,7 @@ export function App() {
             <Route path="*" element={<NotFoundPage />} />
           </Route>
         </Routes>
+        </OAuthCallbackShell>
       </HashRouter>
 
       <Toaster

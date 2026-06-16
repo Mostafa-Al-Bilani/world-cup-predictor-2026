@@ -173,7 +173,7 @@ export function AuthForm({ mode }) {
         <h2 className="text-2xl font-black">{isRegister ? 'Register' : 'Log in'}</h2>
 
         <div className="mt-6">
-          <GoogleSignInButton redirectPath={isRegister ? '/register' : '/login'} />
+          <GoogleSignInButton />
         </div>
 
         <AuthDivider />

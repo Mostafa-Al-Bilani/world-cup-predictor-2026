@@ -94,7 +94,7 @@ export const authService = {
     if (error) throw error;
     return data.user;
   },
-  async signInWithGoogle({ redirectPath = '/login' } = {}) {
+  async signInWithGoogle() {
     if (isDemoMode) {
       throw new Error('Google sign-in requires Supabase authentication.');
     }
@@ -102,7 +102,7 @@ export const authService = {
     const { data, error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {
-        redirectTo: getHashRouteRedirectUrl(redirectPath),
+        redirectTo: getAppBaseUrl(),
       },
     });
 

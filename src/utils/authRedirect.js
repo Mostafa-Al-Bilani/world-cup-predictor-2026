@@ -56,20 +56,58 @@ export const isSupabaseAuthCallback = () => {
   );
 };
 
-export const clearSupabaseAuthCallbackParams = () => {
-  if (!isSupabaseAuthCallback()) return;
-
+export const hasRouterHashRoute = () => {
   const hash = window.location.hash || '';
-  const cleanedHash = hash
+  return /^#\/.+/.test(hash);
+};
+
+let oauthCallbackHandled = false;
+
+export const resetOAuthCallbackHandled = () => {
+  oauthCallbackHandled = false;
+};
+
+export const markOAuthCallbackHandled = () => {
+  oauthCallbackHandled = true;
+};
+
+export const isOAuthCallbackHandled = () => oauthCallbackHandled;
+
+export const shouldBlockRouterForOAuthCallback = ({
+  loading = false,
+  isAuthenticated = false,
+} = {}) => {
+  if (!isSupabaseAuthCallback()) return false;
+  if (oauthCallbackHandled) return false;
+  if (loading) return true;
+  if (isAuthenticated) return true;
+  return true;
+};
+
+export const clearSupabaseAuthCallbackParams = () => {
+  const rawHash = window.location.hash || '';
+  const rawSearch = window.location.search || '';
+  const hadCallback =
+    /(?:^|[?#/&])(access_token|refresh_token|token_hash|type|code)=/i.test(rawHash) ||
+    /(?:^|[?&])(access_token|refresh_token|token_hash|type|code)=/i.test(rawSearch);
+
+  if (!hadCallback) return;
+
+  const cleanedHash = rawHash
     .replace(/[#&?](access_token|refresh_token|token_hash|type|code)=[^&#]*/gi, '')
     .replace(/^#&/, '#')
     .replace(/^#$/, '');
 
-  const search = window.location.search || '';
-  const cleanedSearch = search
+  const cleanedSearch = rawSearch
     .replace(/[?&](access_token|refresh_token|token_hash|type|code)=[^&#]*/gi, '')
     .replace(/^\?$/, '');
 
-  const nextUrl = `${window.location.pathname}${cleanedSearch}${cleanedHash}`;
-  window.history.replaceState({}, document.title, nextUrl);
+  const nextHash = cleanedHash && /^#\/.+/.test(cleanedHash)
+    ? cleanedHash
+    : '';
+
+  const nextUrl = `${window.location.pathname}${cleanedSearch}${nextHash}`;
+  const pageTitle = typeof document !== 'undefined' ? document.title : '';
+  window.history.replaceState({}, pageTitle, nextUrl);
+  markOAuthCallbackHandled();
 };

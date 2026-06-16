@@ -17,7 +17,6 @@ test('login and register forms include Continue with Google', () => {
   assert.match(authForm, /GoogleSignInButton/);
   assert.match(authForm, /AuthDivider/);
   assert.match(googleButton, /Continue with Google/);
-  assert.match(authForm, /redirectPath=\{isRegister \? '\/register' : '\/login'\}/);
 });
 
 test('Google sign-in button prevents repeated clicks while OAuth starts', () => {
@@ -29,12 +28,12 @@ test('Google sign-in button prevents repeated clicks while OAuth starts', () => 
   assert.match(googleButton, /getSafeErrorMessage/);
 });
 
-test('authService calls signInWithOAuth with google provider and hash redirect', () => {
+test('authService calls signInWithOAuth with google provider and app base redirect', () => {
   const authServiceSource = readSource('src/services/authService.js');
 
   assert.match(authServiceSource, /signInWithOAuth\(\{/);
   assert.match(authServiceSource, /provider:\s*'google'/);
-  assert.match(authServiceSource, /redirectTo:\s*getHashRouteRedirectUrl\(redirectPath\)/);
+  assert.match(authServiceSource, /redirectTo:\s*getAppBaseUrl\(\)/);
 });
 
 test('profile creation uses idempotent ensure_user_profile RPC', () => {

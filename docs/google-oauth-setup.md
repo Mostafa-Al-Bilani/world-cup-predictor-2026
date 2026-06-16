@@ -65,14 +65,14 @@ VITE_GITHUB_REPOSITORY_NAME=world-cup-predictor-2026
 
 ## Redirect behavior in this app
 
-The app starts Google OAuth with:
+The app starts Google OAuth with the application base URL only (no hash route):
 
 ```javascript
 supabase.auth.signInWithOAuth({
   provider: 'google',
   options: {
-    redirectTo: `${origin}${basePath}#/login`
-  }
+    redirectTo: getAppBaseUrl(),
+  },
 })
 ```
 
@@ -80,20 +80,20 @@ Examples:
 
 - Localhost:
   ```text
-  http://localhost:5173/#/login
+  http://localhost:5173/
   ```
 - GitHub Pages:
   ```text
-  https://<github-username>.github.io/world-cup-predictor-2026/#/login
+  https://<github-username>.github.io/world-cup-predictor-2026/
   ```
 
-After Google redirects through Supabase, the app restores the session, completes username onboarding if needed, then champion onboarding if needed.
+Supabase appends OAuth tokens or codes to the return URL. The app waits for session restoration, then navigates internally to username setup, champion pick, or the remembered destination. Post-login destinations are stored in sessionStorage before OAuth starts.
 
 ## Manual verification checklist
 
 1. Google button appears on login and register.
-2. Localhost Google sign-in returns to `/#/login` and creates a session.
-3. GitHub Pages Google sign-in returns to `/world-cup-predictor-2026/#/login`.
+2. Localhost Google sign-in returns to `/` and creates a session without showing the 404 page.
+3. GitHub Pages Google sign-in returns to `/world-cup-predictor-2026/` and routes internally after session restore.
 4. New Google user is asked for a unique username before scoreboard access.
 5. Existing email/password users keep their username and champion prediction.
 6. Champion picker does not appear when a prediction row already exists.

@@ -28,7 +28,7 @@ function GoogleIcon() {
   );
 }
 
-export function GoogleSignInButton({ redirectPath = '/login' }) {
+export function GoogleSignInButton() {
   const location = useLocation();
   const { isDemoMode, signInWithGoogle } = useAuth();
   const [loading, setLoading] = useState(false);
@@ -42,7 +42,7 @@ export function GoogleSignInButton({ redirectPath = '/login' }) {
 
     try {
       rememberOAuthReturnTo(location.state?.from);
-      await signInWithGoogle({ redirectPath });
+      await signInWithGoogle();
     } catch (error) {
       const message = getSafeErrorMessage(
         error,
