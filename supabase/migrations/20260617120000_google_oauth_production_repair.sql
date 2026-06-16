@@ -1,5 +1,5 @@
--- Google OAuth onboarding: nullable usernames, optional profile metadata,
--- case-insensitive username uniqueness, and secure username assignment RPC.
+-- Production repair for Google OAuth user creation failures.
+-- Safe to re-run if the original onboarding migration was partially applied.
 
 alter table public.profiles
   add column if not exists full_name text,
@@ -54,6 +54,11 @@ begin
   return new;
 end;
 $$;
+
+drop trigger if exists on_auth_user_created on auth.users;
+create trigger on_auth_user_created
+after insert on auth.users
+for each row execute function public.handle_new_user();
 
 create or replace function public.sync_public_leaderboard_profile()
 returns trigger
@@ -180,71 +185,5 @@ begin
 end;
 $$;
 
-create or replace function public.set_profile_username(target_username text)
-returns public.profiles
-language plpgsql
-security definer
-set search_path = public
-as $$
-declare
-  normalized text;
-  saved public.profiles;
-begin
-  if auth.uid() is null then
-    raise exception 'You must be logged in to set a username';
-  end if;
-
-  normalized := trim(coalesce(target_username, ''));
-
-  if normalized = '' or length(normalized) > 40 then
-    raise exception 'Username must be between 1 and 40 characters';
-  end if;
-
-  if normalized !~ '^[A-Za-z0-9][A-Za-z0-9._-]*$' then
-    raise exception 'Username contains invalid characters';
-  end if;
-
-  if exists (
-    select 1
-    from public.profiles
-    where lower(trim(username)) = lower(normalized)
-      and id <> auth.uid()
-  ) then
-    raise exception 'Username is already taken';
-  end if;
-
-  update public.profiles
-  set username = normalized
-  where id = auth.uid()
-    and (username is null or trim(username) = '')
-  returning * into saved;
-
-  if saved.id is null then
-    select *
-    into saved
-    from public.profiles
-    where id = auth.uid();
-
-    if saved.id is null then
-      raise exception 'Profile not found';
-    end if;
-
-    if lower(trim(saved.username)) <> lower(normalized) then
-      raise exception 'Username is already set';
-    end if;
-  end if;
-
-  return saved;
-end;
-$$;
-
 revoke all on function public.ensure_user_profile() from public;
-revoke all on function public.set_profile_username(text) from public;
-
 grant execute on function public.ensure_user_profile() to authenticated;
-grant execute on function public.set_profile_username(text) to authenticated;
-
-drop trigger if exists on_auth_user_created on auth.users;
-create trigger on_auth_user_created
-after insert on auth.users
-for each row execute function public.handle_new_user();

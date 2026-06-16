@@ -47,11 +47,64 @@ Do **not** put the Google Client Secret in Vite environment variables. Enter it 
      https://<github-username>.github.io/world-cup-predictor-2026/#/login
      https://<github-username>.github.io/world-cup-predictor-2026/#/register
      ```
-6. Run the latest database migration if your project predates Google onboarding:
+6. Run the latest database migrations if your project predates Google onboarding:
    ```text
    supabase/migrations/20260616120000_google_oauth_onboarding.sql
+   supabase/migrations/20260617120000_google_oauth_production_repair.sql
    ```
    Or re-run the relevant sections from `supabase/schema.sql`.
+
+### Verify the migration in production
+
+Run this read-only SQL in Supabase → SQL Editor:
+
+```sql
+select
+  column_name,
+  is_nullable
+from information_schema.columns
+where table_schema = 'public'
+  and table_name = 'profiles'
+  and column_name = 'username';
+
+select
+  tgname as trigger_name,
+  proname as function_name
+from pg_trigger
+join pg_proc on pg_proc.oid = pg_trigger.tgfoid
+join pg_class on pg_class.oid = pg_trigger.tgrelid
+join pg_namespace on pg_namespace.oid = pg_class.relnamespace
+where pg_namespace.nspname = 'auth'
+  and pg_class.relname = 'users'
+  and tgname = 'on_auth_user_created';
+```
+
+Expected:
+
+- `profiles.username` → `is_nullable = YES`
+- `on_auth_user_created` trigger → `handle_new_user`
+
+If Google OAuth returns `error_code=unexpected_failure` with `Database error saving new user`, the migration was not applied or the trigger still inserts a required username for OAuth users.
+
+## Callback error diagnosis
+
+When Google consent succeeds but Supabase cannot create the user, Supabase redirects back with a hash such as:
+
+```text
+#error=server_error&error_code=unexpected_failure&error_description=Database+error+saving+new+user
+```
+
+The app now blocks `HashRouter` and shows:
+
+- a safe user-facing message
+- the Supabase `error_code`
+- an operator hint when the failure is database- or OAuth-configuration-related
+
+Common causes:
+
+1. **Database error saving new user** → apply the Google OAuth migrations above.
+2. **OAuth code exchange failure** → verify Google Client ID, matching client secret, and exact Supabase callback URI in Google Cloud Console.
+3. **No user in Supabase Authentication → Users** after consent → the failure happened before Supabase persisted the auth user; check Supabase Auth logs and the migration verification SQL above.
 
 ## Frontend environment
 

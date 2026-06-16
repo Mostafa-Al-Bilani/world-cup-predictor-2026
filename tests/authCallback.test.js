@@ -11,8 +11,11 @@ import {
   endCallbackProcessing,
   getAuthCallbackErrorFromUrl,
   isSupabaseAuthCallback,
+  parseAuthCallbackFailure,
   resetCallbackProcessingClaim,
+  resolveAuthCallbackFailure,
   resolvePostAuthRoute,
+  sanitizeAuthDiagnosticText,
 } from '../src/utils/authCallback.js';
 import {
   buildAppBaseUrl,
@@ -93,7 +96,20 @@ test('AuthCallbackBoundary blocks HashRouter while callback processing', () => {
   const boundarySource = readSource('src/components/AuthCallbackBoundary.jsx');
 
   assert.match(boundarySource, /authCallbackProcessing/);
+  assert.match(boundarySource, /authCallbackError/);
   assert.match(boundarySource, /Completing sign-in/);
+  assert.match(boundarySource, /AuthCallbackErrorPanel/);
+});
+
+test('failed OAuth callbacks render the callback error panel instead of NotFound', () => {
+  const appSource = readSource('src/App.jsx');
+  const boundarySource = readSource('src/components/AuthCallbackBoundary.jsx');
+  const errorPanelSource = readSource('src/components/AuthCallbackErrorPanel.jsx');
+
+  assert.match(appSource, /AuthCallbackBoundary[\s\S]*HashRouter/);
+  assert.match(boundarySource, /authCallbackError[\s\S]*AuthCallbackErrorPanel/);
+  assert.doesNotMatch(boundarySource, /NotFoundPage/);
+  assert.match(errorPanelSource, /Supabase error code:/);
 });
 
 test('authentication callback does not rely on NotFound during processing', () => {
@@ -206,12 +222,71 @@ test('password recovery routes to reset password after callback', () => {
   );
 });
 
-test('callback errors are displayed safely', () => {
+test('callback errors are displayed safely with preserved Supabase codes', () => {
   window.location.hash = '#error=access_denied&error_description=User%20cancelled';
   assert.equal(getAuthCallbackErrorFromUrl(), 'Sign-in was cancelled.');
+  assert.equal(parseAuthCallbackFailure()?.code, 'access_denied');
+
+  window.location.hash =
+    '#error=server_error&error_code=unexpected_failure&error_description=Database%20error%20saving%20new%20user';
+  assert.equal(isSupabaseAuthCallback(), true);
+  const databaseFailure = parseAuthCallbackFailure();
+  assert.equal(databaseFailure.code, 'unexpected_failure');
+  assert.match(databaseFailure.message, /creating your account/i);
+  assert.match(databaseFailure.hint, /google_oauth/i);
 
   window.location.hash = '#error=invalid_request&error_description=Email%20link%20expired';
   assert.match(getAuthCallbackErrorFromUrl(), /invalid or has expired/i);
+});
+
+test('OAuth callbacks containing error_code and error_description are detected', () => {
+  window.location.hash =
+    '#error_code=unexpected_failure&error_description=Database%20error%20saving%20new%20user';
+  assert.equal(isSupabaseAuthCallback(), true);
+
+  window.location.hash = '#error_description=Unable%20to%20exchange%20external%20code';
+  assert.equal(isSupabaseAuthCallback(), true);
+});
+
+test('OAuth code exchange failures surface provider configuration guidance', () => {
+  const failure = resolveAuthCallbackFailure({
+    error: 'invalid_grant',
+    errorCode: 'oauth_exchange_failed',
+    errorDescription: 'Unable to exchange external code: invalid_client',
+  });
+
+  assert.equal(failure.code, 'oauth_exchange_failed');
+  assert.match(failure.message, /OAuth code exchange/i);
+  assert.match(failure.hint, /Google Client ID/i);
+  assert.match(failure.hint, /Supabase callback URI/i);
+});
+
+test('callback cleanup removes error_code and error_description params', () => {
+  window.location.hash =
+    '#error=server_error&error_code=unexpected_failure&error_description=Database%20error%20saving%20new%20user';
+
+  clearSupabaseAuthCallbackParams();
+
+  assert.equal(window.location.hash, '');
+  assert.equal(isSupabaseAuthCallback(), false);
+});
+
+test('auth diagnostic sanitizer redacts tokens and secrets from messages', () => {
+  const sanitized = sanitizeAuthDiagnosticText(
+    'access_token=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.payload.signature refresh_token=secret',
+  );
+
+  assert.match(sanitized, /access_token=\[redacted\]/i);
+  assert.doesNotMatch(sanitized, /eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9/);
+});
+
+test('AuthContext resolves callback URL failures before HashRouter mounts', () => {
+  const authContextSource = readSource('src/context/AuthContext.jsx');
+
+  assert.match(authContextSource, /parseAuthCallbackFailure/);
+  assert.match(authContextSource, /authCallbackError/);
+  assert.match(authContextSource, /handleAuthCallbackFailure/);
+  assert.match(authContextSource, /initialFailure/);
 });
 
 test('React StrictMode callback claim prevents duplicate processing', () => {

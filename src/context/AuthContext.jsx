@@ -9,8 +9,9 @@ import {
   buildOnboardingStatusForRedirect,
   clearSupabaseAuthCallbackParams,
   endCallbackProcessing,
-  getAuthCallbackErrorFromUrl,
   isSupabaseAuthCallback,
+  parseAuthCallbackFailure,
+  resolveAuthCallbackFailure,
   resolvePostAuthRoute,
 } from '../utils/authCallback';
 import { clearOAuthReturnTo, readOAuthReturnTo } from '../utils/authRedirect';
@@ -19,6 +20,25 @@ import { isUsernameComplete } from '../utils/onboarding';
 const AuthContext = createContext(null);
 
 const CALLBACK_TIMEOUT_MS = 12000;
+
+function resolveCallbackFailureInput(input) {
+  if (typeof input === 'string') {
+    return resolveAuthCallbackFailure({ errorDescription: input });
+  }
+
+  return input;
+}
+
+function getInitialAuthCallbackError() {
+  if (!isSupabaseConfigured) return null;
+  return parseAuthCallbackFailure();
+}
+
+function getInitialAuthCallbackProcessing() {
+  if (!isSupabaseConfigured) return false;
+  if (getInitialAuthCallbackError()) return false;
+  return isSupabaseAuthCallback();
+}
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
@@ -32,8 +52,9 @@ export function AuthProvider({ children }) {
   const [loading, setLoading] = useState(true);
   const [passwordRecovery, setPasswordRecovery] = useState(false);
   const [authCallbackProcessing, setAuthCallbackProcessing] = useState(
-    () => isSupabaseConfigured && isSupabaseAuthCallback(),
+    getInitialAuthCallbackProcessing,
   );
+  const [authCallbackError, setAuthCallbackError] = useState(getInitialAuthCallbackError);
   const championSyncVersionRef = useRef(0);
   const authSyncVersionRef = useRef(0);
   const callbackFinishedRef = useRef(false);
@@ -160,6 +181,23 @@ export function AuthProvider({ children }) {
     return { profile: nextProfile, championPrediction: prediction };
   }, [syncChampionPrediction, syncProfile]);
 
+  const handleAuthCallbackFailure = useCallback((failureInput) => {
+    if (callbackFinishedRef.current) return;
+    if (!beginCallbackProcessing()) return;
+
+    callbackFinishedRef.current = true;
+    setAuthCallbackError(resolveCallbackFailureInput(failureInput));
+    clearSupabaseAuthCallbackParams();
+    endCallbackProcessing();
+    setAuthCallbackProcessing(false);
+    setLoading(false);
+  }, []);
+
+  const dismissAuthCallbackError = useCallback((path = '/login') => {
+    setAuthCallbackError(null);
+    postAuthRedirectRef.current = { path, state: {} };
+  }, []);
+
   const finishAuthCallback = useCallback(async ({
     session = null,
     event = null,
@@ -171,10 +209,9 @@ export function AuthProvider({ children }) {
     callbackFinishedRef.current = true;
 
     try {
-      const urlError = getAuthCallbackErrorFromUrl();
-      if (urlError) {
-        authFlashRef.current = { type: 'error', message: urlError };
-        postAuthRedirectRef.current = { path: '/login', state: {} };
+      const urlFailure = parseAuthCallbackFailure();
+      if (urlFailure) {
+        setAuthCallbackError(urlFailure);
         clearSupabaseAuthCallbackParams();
         return;
       }
@@ -220,11 +257,11 @@ export function AuthProvider({ children }) {
       };
       postAuthRedirectRef.current = { path: '/login', state: {} };
     } catch {
-      authFlashRef.current = {
-        type: 'error',
-        message: 'Could not load your account. Try again.',
-      };
-      postAuthRedirectRef.current = { path: '/login', state: {} };
+      setAuthCallbackError({
+        code: 'profile_sync_failed',
+        message: 'Could not load your account after sign-in.',
+        hint: 'Your Supabase session may exist, but the app could not load or create your profile. Retry sign-in after confirming the Google OAuth migration is applied.',
+      });
       clearSupabaseAuthCallbackParams();
     } finally {
       endCallbackProcessing();
@@ -232,19 +269,6 @@ export function AuthProvider({ children }) {
       setLoading(false);
     }
   }, [syncAuthenticatedState]);
-
-  const failAuthCallback = useCallback((message) => {
-    if (callbackFinishedRef.current) return;
-    if (!beginCallbackProcessing()) return;
-
-    callbackFinishedRef.current = true;
-    authFlashRef.current = { type: 'error', message };
-    postAuthRedirectRef.current = { path: '/login', state: {} };
-    clearSupabaseAuthCallbackParams();
-    endCallbackProcessing();
-    setAuthCallbackProcessing(false);
-    setLoading(false);
-  }, []);
 
   const refreshUser = useCallback(async () => {
     setLoading(true);
@@ -270,6 +294,16 @@ export function AuthProvider({ children }) {
       return undefined;
     }
 
+    const initialFailure = parseAuthCallbackFailure();
+    if (initialFailure) {
+      callbackFinishedRef.current = true;
+      setAuthCallbackError(initialFailure);
+      clearSupabaseAuthCallbackParams();
+      setAuthCallbackProcessing(false);
+      setLoading(false);
+      return undefined;
+    }
+
     const hadCallback = isSupabaseAuthCallback();
     callbackFinishedRef.current = !hadCallback;
 
@@ -286,7 +320,11 @@ export function AuthProvider({ children }) {
 
         const { data, error } = await supabase.auth.getSession();
         if (error) {
-          failAuthCallback('Could not complete sign-in. Try again.');
+          handleAuthCallbackFailure({
+            code: error.code ?? 'session_lookup_failed',
+            message: 'Could not complete sign-in.',
+            hint: 'Supabase rejected the callback session before a user could be created or linked.',
+          });
           return;
         }
 
@@ -295,8 +333,14 @@ export function AuthProvider({ children }) {
           return;
         }
 
-        const urlError = getAuthCallbackErrorFromUrl();
-        failAuthCallback(urlError ?? 'Could not complete sign-in. Try again.');
+        const urlFailure = parseAuthCallbackFailure();
+        handleAuthCallbackFailure(
+          urlFailure ?? {
+            code: 'session_missing_after_callback',
+            message: 'Sign-in returned without a Supabase session.',
+            hint: 'If this was Google OAuth, confirm the Google OAuth migration is applied and check Supabase Authentication logs for database or provider errors.',
+          },
+        );
       }, CALLBACK_TIMEOUT_MS);
     }
 
@@ -318,19 +362,31 @@ export function AuthProvider({ children }) {
             event,
             passwordRecoveryActive: true,
           }).catch(() => {
-            failAuthCallback('Could not complete sign-in. Try again.');
+            handleAuthCallbackFailure({
+              code: 'password_recovery_callback_failed',
+              message: 'Could not complete password recovery.',
+              hint: null,
+            });
           });
           return;
         }
 
         if (AUTH_CALLBACK_EVENTS.has(event) && session?.user) {
           finishAuthCallback({ session, event }).catch(() => {
-            failAuthCallback('Could not complete sign-in. Try again.');
+            handleAuthCallbackFailure({
+              code: 'authenticated_callback_failed',
+              message: 'Sign-in succeeded in Supabase but the app could not finish onboarding.',
+              hint: 'Confirm the Google OAuth database migration is applied and retry.',
+            });
           });
           return;
         }
 
         if (event === 'INITIAL_SESSION' && !session?.user) {
+          const urlFailure = parseAuthCallbackFailure();
+          if (urlFailure) {
+            handleAuthCallbackFailure(urlFailure);
+          }
           return;
         }
 
@@ -363,7 +419,7 @@ export function AuthProvider({ children }) {
         window.clearTimeout(timeoutId);
       }
     };
-  }, [failAuthCallback, finishAuthCallback, isDemoMode, refreshUser, syncAuthenticatedState]);
+  }, [finishAuthCallback, handleAuthCallbackFailure, isDemoMode, refreshUser, syncAuthenticatedState]);
 
   const signUp = useCallback(async (payload) => {
     const result = await authService.signUp(payload);
@@ -471,6 +527,7 @@ export function AuthProvider({ children }) {
       championPredictionsOpen,
       loading,
       authCallbackProcessing,
+      authCallbackError,
       isAuthenticated: Boolean(user),
       isAdmin: Boolean(profile?.is_admin),
       isSupabaseConfigured,
@@ -485,10 +542,12 @@ export function AuthProvider({ children }) {
       refreshProfile,
       refreshChampionPrediction,
       clearPasswordRecovery,
+      dismissAuthCallbackError,
       consumePostAuthRedirect,
       consumeAuthFlash,
     }),
     [
+      authCallbackError,
       authCallbackProcessing,
       championPrediction,
       championPredictionsOpen,
@@ -497,6 +556,7 @@ export function AuthProvider({ children }) {
       clearPasswordRecovery,
       completeUsername,
       consumeAuthFlash,
+      dismissAuthCallbackError,
       consumePostAuthRedirect,
       loading,
       passwordRecovery,
