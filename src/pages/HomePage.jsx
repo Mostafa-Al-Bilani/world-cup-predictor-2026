@@ -364,7 +364,7 @@ function DashboardHome({
         <DashboardStatCard label="Exact scores" value={exactScores} />
       </section>
 
-      <section className="mt-8 grid gap-6 lg:grid-cols-3">
+      <section className="mt-8 grid gap-6 lg:grid-cols-2">
         <DashboardPanel
           title="Next prediction needed"
           actionLabel="Open matches"
@@ -402,6 +402,7 @@ function DashboardHome({
           title="Top three"
           actionLabel="Full table"
           actionTo="/scoreboard"
+          className="lg:col-span-2"
         >
           {leaders.length ? (
             <TopThreePodium users={leaders} />
@@ -634,9 +635,11 @@ function LiveMatchFocusSection({
   );
 }
 
-function DashboardPanel({ title, actionLabel, actionTo, children }) {
+function DashboardPanel({ title, actionLabel, actionTo, children, className = "" }) {
   return (
-    <section className="rounded-lg border border-white/10 bg-slate-950/72 p-5 shadow-xl">
+    <section
+      className={`rounded-lg border border-white/10 bg-slate-950/72 p-5 shadow-xl ${className}`}
+    >
       <div className="mb-4 flex items-center justify-between gap-4">
         <h2 className="text-xl font-black text-white">{title}</h2>
 
