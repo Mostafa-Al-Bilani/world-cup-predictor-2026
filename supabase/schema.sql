@@ -618,6 +618,28 @@ as $$
     or lower(trim(coalesce(team_name, ''))) ~ '^(?:[123][a-l](?:/[a-l])*|[a-l][123]?|w[0-9]+|l[0-9]+|group [a-l] (?:1st|2nd|3rd) place|round of [0-9]+ [0-9]+ winner|round of [0-9]+ [0-9]+ loser|quarterfinal [0-9]+ winner|quarterfinal [0-9]+ loser|semifinal [0-9]+ winner|semifinal [0-9]+ loser)$';
 $$;
 
+
+-- Use the same placeholder rules for champion validation and bracket validation.
+create or replace function public.is_valid_world_cup_team(team_name text)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public, extensions
+as $$
+  select not public.is_placeholder_team_name(team_name)
+    and exists (
+      select 1
+      from (
+        select team_a as team from public.matches
+        union
+        select team_b as team from public.matches
+      ) teams
+      where not public.is_placeholder_team_name(teams.team)
+        and public.team_compare_key(teams.team) = public.team_compare_key(team_name)
+    );
+$$;
+
 create or replace function public.normalize_stage_prediction_stage(stage_name text)
 returns text
 language plpgsql
@@ -2183,7 +2205,7 @@ grant select on public.stage_predictions to authenticated;
 grant execute on function public.update_group_live_predictions_setting(uuid, boolean) to authenticated;
 grant execute on function public.get_live_group_predictions(uuid) to authenticated;
 
-grant execute on function public.recalculate_match_points(uuid) to service_role;
+grant execute on function public.recalculate_match_points(uuid) to authenticated, service_role;
 grant execute on function public.set_world_cup_winner_prediction(text) to authenticated;
 grant execute on function public.recalculate_champion_points() to service_role;
 grant execute on function public.save_stage_prediction(text, text[]) to authenticated;
@@ -2223,6 +2245,30 @@ create table if not exists public.public_leaderboard_profiles (
   created_at timestamptz not null default now()
 );
 
+-- Remove legacy mirror rows whose source profile no longer exists before
+-- installing the source-of-truth foreign key.
+delete from public.public_leaderboard_profiles leaderboard
+where not exists (
+  select 1
+  from public.profiles profile
+  where profile.id = leaderboard.id
+);
+
+-- Keep the public leaderboard mirror synchronized with profile deletion.
+-- Drop both the historical/default name and the canonical name so rerunning
+-- the schema is safe across existing projects.
+alter table public.public_leaderboard_profiles
+  drop constraint if exists public_leaderboard_profiles_id_fkey;
+
+alter table public.public_leaderboard_profiles
+  drop constraint if exists public_leaderboard_profiles_profile_id_fkey;
+
+alter table public.public_leaderboard_profiles
+  add constraint public_leaderboard_profiles_profile_id_fkey
+  foreign key (id)
+  references public.profiles(id)
+  on delete cascade;
+
 alter table public.public_leaderboard_profiles enable row level security;
 
 drop policy if exists "Public can read public leaderboard profiles"
@@ -2257,6 +2303,8 @@ select
   total_predictions,
   created_at
 from public.profiles
+where username is not null
+  and trim(username) <> ''
 on conflict (id) do update set
   username = excluded.username,
   total_points = excluded.total_points,
@@ -2995,6 +3043,13 @@ begin
     from pg_proc p
     join pg_namespace n on n.oid = p.pronamespace
     where n.nspname = 'public'
+      and not exists (
+        select 1
+        from pg_depend dependency
+        where dependency.classid = 'pg_proc'::regclass
+          and dependency.objid = p.oid
+          and dependency.deptype = 'e'
+      )
   loop
     execute format(
       'alter function %I.%I(%s) set search_path = public, extensions',
@@ -3044,6 +3099,21 @@ revoke execute on all functions in schema public from anon;
 revoke execute on all functions in schema public from authenticated;
 
 grant execute on all functions in schema public to service_role;
+
+-- Authentication/onboarding RPCs used by the browser client.
+grant execute on function public.ensure_user_profile()
+to authenticated;
+
+grant execute on function public.set_profile_username(text)
+to authenticated;
+
+-- Admin-only recalculation RPCs are safe to expose to authenticated because
+-- each function performs its own is_admin/service_role authorization check.
+grant execute on function public.recalculate_match_points(uuid)
+to authenticated;
+
+grant execute on function public.recalculate_stage_prediction_points(text)
+to authenticated;
 
 grant execute on function public.set_world_cup_winner_prediction(text)
 to authenticated;
@@ -3096,8 +3166,14 @@ to authenticated;
 grant execute on function public.can_manage_group(uuid, uuid)
 to authenticated;
 
--- Keep public table reads explicitly granted.
+-- Keep client table privileges explicit. RLS remains the authorization layer.
 grant select on public.matches to anon, authenticated;
+grant insert, update, delete on public.matches to authenticated;
+
+grant select, update on public.profiles to authenticated;
+grant select, insert, update, delete on public.predictions to authenticated;
+grant select, insert on public.sync_logs to authenticated;
+
 grant select on public.groups to authenticated;
 grant select on public.group_members to authenticated;
 grant select on public.group_invitations to authenticated;
@@ -3112,54 +3188,36 @@ grant select on public.stage_predictions to authenticated;
 -- Ensure scoring helper updates can run from Edge Functions/service_role
 -- without being blocked by user-facing prediction lock triggers.
 
-create or replace function public.prevent_locked_match_predictions()
-returns trigger
-language plpgsql
-security definer
-set search_path = public
-as $$
+-- Remove stale triggers from older deployments that still call the legacy
+-- prevent_locked_match_predictions() helper. The canonical triggers below use
+-- prevent_locked_prediction_change().
+do $$
 declare
-  starts_at timestamptz;
-  current_status text;
-  current_stage text;
-  current_team_a text;
-  current_team_b text;
+  trigger_record record;
 begin
-  -- Backend/admin scoring updates must not be blocked by match lock rules.
-  if coalesce(auth.role(), '') = 'service_role' or public.is_admin(auth.uid()) then
-    return new;
-  end if;
-
-  select match_date, status, stage, team_a, team_b
-  into starts_at, current_status, current_stage, current_team_a, current_team_b
-  from public.matches
-  where id = new.match_id;
-
-  if starts_at is null then
-    raise exception 'Match not found.';
-  end if;
-
-  if public.is_placeholder_team_name(current_team_a)
-     or public.is_placeholder_team_name(current_team_b) then
-    raise exception 'Predictions open when both real teams are known.';
-  end if;
-
-  if starts_at <= now() then
-    raise exception 'Predictions are locked because the match has already started.';
-  end if;
-
-  if current_status <> 'upcoming' then
-    raise exception 'Predictions are locked because this match is not open for predictions.';
-  end if;
-
-  if new.predicted_result = 'draw'
-     and not public.match_allows_draw(current_stage) then
-    raise exception 'Draw predictions are only allowed for group-stage matches.';
-  end if;
-
-  return new;
+  for trigger_record in
+    select trigger_info.tgname
+    from pg_trigger trigger_info
+    join pg_class relation_info
+      on relation_info.oid = trigger_info.tgrelid
+    join pg_namespace namespace_info
+      on namespace_info.oid = relation_info.relnamespace
+    join pg_proc function_info
+      on function_info.oid = trigger_info.tgfoid
+    where namespace_info.nspname = 'public'
+      and relation_info.relname = 'predictions'
+      and not trigger_info.tgisinternal
+      and function_info.proname = 'prevent_locked_match_predictions'
+  loop
+    execute format(
+      'drop trigger if exists %I on public.predictions',
+      trigger_record.tgname
+    );
+  end loop;
 end;
 $$;
+
+drop function if exists public.prevent_locked_match_predictions();
 
 create or replace function public.prevent_locked_prediction_change()
 returns trigger
@@ -3504,21 +3562,18 @@ end;
 $$;
 
 -- Keep hardening and grants correct after recreating functions.
-alter function public.prevent_locked_match_predictions() set search_path = public, extensions;
 alter function public.prevent_locked_prediction_change() set search_path = public, extensions;
 alter function public.prevent_incomplete_score_predictions() set search_path = public, extensions;
 alter function public.recalculate_profile_totals(uuid) set search_path = public, extensions;
 alter function public.recalculate_match_points(uuid) set search_path = public, extensions;
 alter function public.get_live_group_predictions(uuid) set search_path = public, extensions;
 
-revoke execute on function public.prevent_locked_match_predictions() from public, anon, authenticated;
 revoke execute on function public.prevent_locked_prediction_change() from public, anon, authenticated;
 revoke execute on function public.prevent_incomplete_score_predictions() from public, anon, authenticated;
 revoke execute on function public.recalculate_profile_totals(uuid) from public, anon, authenticated;
-revoke execute on function public.recalculate_match_points(uuid) from public, anon, authenticated;
+revoke execute on function public.recalculate_match_points(uuid) from public, anon;
 revoke execute on function public.get_live_group_predictions(uuid) from public, anon;
 
-grant execute on function public.prevent_locked_match_predictions() to service_role;
 grant execute on function public.prevent_locked_prediction_change() to service_role;
 grant execute on function public.prevent_incomplete_score_predictions() to service_role;
 grant execute on function public.recalculate_profile_totals(uuid) to service_role;
