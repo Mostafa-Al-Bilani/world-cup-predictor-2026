@@ -5,12 +5,14 @@ import {
   Trophy,
 } from "lucide-react";
 import { Link } from "react-router-dom";
+import { CompactNoGoalsLabel, CompactScorerGroup } from "./CompactMatchScorers";
 import { LiveMatchSpotlight } from "./LiveMatchSpotlight";
 import { StatusBadge } from "./StatusBadge";
 import { TeamFlag } from "./TeamFlag";
 import { formatDateTime, getUserTimeZone } from "../utils/date";
 import { formatKickoffCountdown } from "../utils/kickoffCountdown";
 import { normalizeMatchDisplayStatus } from "../utils/matchDisplay";
+import { getCompletedMatchScorerState } from "../utils/matchGoalEvents";
 import { getPredictionSummary } from "../utils/predictions";
 
 const statusLabels = {
@@ -173,15 +175,15 @@ function MatchWindowPanel({ title, description, className, children }) {
 }
 
 function RecentCompletedCard({ match }) {
+  const scorerState = getCompletedMatchScorerState(match);
+
   return (
     <CompactMatchCard
       match={match}
       statusLabel={getStatusLabel(match)}
       statusTone="finished"
-      centerContent={
-        <p className="whitespace-nowrap text-xl font-black text-white">
-          {getFinalScore(match)}
-        </p>
+      scoreBlock={
+        <CompactFinishedScoreBlock match={match} scorerState={scorerState} />
       }
       detail={
         <span className="inline-flex min-w-0 items-center gap-2 text-sm text-slate-300">
@@ -191,6 +193,68 @@ function RecentCompletedCard({ match }) {
       }
       actionLabel="View match"
     />
+  );
+}
+
+function CompactFinishedScoreBlock({ match, scorerState }) {
+  const score = getFinalScore(match);
+
+  return (
+    <>
+      <div className="hidden min-w-0 sm:grid sm:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] sm:items-start sm:gap-x-3 sm:gap-y-1">
+        <CompactTeamName name={match.team_a} />
+        <p className="self-center whitespace-nowrap text-xl font-black text-white">
+          {score}
+        </p>
+        <CompactTeamName name={match.team_b} align="right" />
+
+        {scorerState?.kind === "scorers" ? (
+          <>
+            <CompactScorerGroup events={scorerState.teamA} align="left" />
+            <span aria-hidden="true" />
+            <CompactScorerGroup events={scorerState.teamB} align="right" />
+          </>
+        ) : null}
+
+        {scorerState?.kind === "no_goals" ? (
+          <CompactNoGoalsLabel className="col-span-3 mt-0.5" />
+        ) : null}
+      </div>
+
+      <div className="min-w-0 sm:hidden">
+        <div className="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-start gap-x-2 gap-y-0.5">
+          <div className="min-w-0">
+            <CompactTeamName name={match.team_a} />
+            {scorerState?.kind === "scorers" ? (
+              <CompactScorerGroup
+                events={scorerState.teamA}
+                align="left"
+                className="mt-0.5"
+              />
+            ) : null}
+          </div>
+
+          <p className="self-center whitespace-nowrap px-1 text-xl font-black text-white">
+            {score}
+          </p>
+
+          <div className="min-w-0">
+            <CompactTeamName name={match.team_b} align="right" />
+            {scorerState?.kind === "scorers" ? (
+              <CompactScorerGroup
+                events={scorerState.teamB}
+                align="right"
+                className="mt-0.5"
+              />
+            ) : null}
+          </div>
+        </div>
+
+        {scorerState?.kind === "no_goals" ? (
+          <CompactNoGoalsLabel className="mt-1" />
+        ) : null}
+      </div>
+    </>
   );
 }
 
@@ -230,6 +294,7 @@ function CompactMatchCard({
   statusLabel,
   statusTone = "neutral",
   centerContent,
+  scoreBlock,
   detail,
   note,
   actionLabel,
@@ -255,11 +320,15 @@ function CompactMatchCard({
         </div>
       </div>
 
-      <div className="mt-3 grid min-w-0 grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-3">
-        <CompactTeamName name={match.team_a} />
-        {centerContent}
-        <CompactTeamName name={match.team_b} align="right" />
-      </div>
+      {scoreBlock ? (
+        <div className="mt-3 min-w-0">{scoreBlock}</div>
+      ) : (
+        <div className="mt-3 grid min-w-0 grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-3">
+          <CompactTeamName name={match.team_a} />
+          {centerContent}
+          <CompactTeamName name={match.team_b} align="right" />
+        </div>
+      )}
 
       <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="min-w-0 space-y-1">
