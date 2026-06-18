@@ -31,6 +31,8 @@ test("classifies live statuses as live matches", () => {
     "extra_time",
     "penalties",
     "penalty-shootout",
+    "in_progress",
+    "first_half",
   ];
 
   const matches = statuses.map((status, index) =>
@@ -50,25 +52,72 @@ test("classifies live statuses as live matches", () => {
     "live-2",
     "live-3",
     "live-4",
+    "live-5",
+    "live-6",
   ]);
   assert.deepEqual(recentMatches, []);
   assert.deepEqual(nextMatches, []);
 });
 
-test("does not duplicate a live match in recent matches", () => {
+test("includes a live match that started 30 minutes ago", () => {
+  const match = makeMatch({
+    id: "live-started-earlier",
+    status: "live",
+    match_date: kickoff(-30 * 60 * 1000),
+  });
+
+  const { liveMatches } = getDashboardMatchWindows([match], NOW);
+
+  assert.deepEqual(getIds(liveMatches), ["live-started-earlier"]);
+});
+
+test("includes a stale upcoming match after kickoff in live matches", () => {
+  const match = makeMatch({
+    id: "stale-upcoming-live",
+    status: "upcoming",
+    match_date: kickoff(-20 * 60 * 1000),
+    team_a_score: 0,
+    team_b_score: 1,
+  });
+
+  const { liveMatches, recentMatches, nextMatches } = getDashboardMatchWindows(
+    [match],
+    NOW,
+  );
+
+  assert.deepEqual(getIds(liveMatches), ["stale-upcoming-live"]);
+  assert.deepEqual(recentMatches, []);
+  assert.deepEqual(nextMatches, []);
+});
+
+test("does not duplicate a live match in recent or upcoming lists", () => {
   const match = makeMatch({
     id: "live-now",
     status: "live",
     match_date: kickoff(-30 * 60 * 1000),
   });
 
-  const { liveMatches, recentMatches } = getDashboardMatchWindows(
+  const { liveMatches, recentMatches, nextMatches } = getDashboardMatchWindows(
     [match],
     NOW,
   );
 
   assert.deepEqual(getIds(liveMatches), ["live-now"]);
   assert.deepEqual(recentMatches, []);
+  assert.deepEqual(nextMatches, []);
+});
+
+test("uses UTC instants for filtering regardless of display timezone", () => {
+  const match = makeMatch({
+    id: "utc-live",
+    status: "live",
+    match_date: "2026-06-15T11:30:00.000Z",
+  });
+
+  const now = new Date("2026-06-15T12:00:00.000Z");
+  const { liveMatches } = getDashboardMatchWindows([match], now);
+
+  assert.deepEqual(getIds(liveMatches), ["utc-live"]);
 });
 
 test("includes a finished match inside the previous 24 hours", () => {

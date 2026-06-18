@@ -7,6 +7,10 @@ import {
 export const DASHBOARD_MATCH_WINDOW_MS = 24 * 60 * 60 * 1000;
 
 const toTimestamp = (value) => {
+  if (value instanceof Date) {
+    return Number.isFinite(value.getTime()) ? value.getTime() : null;
+  }
+
   if (typeof value === "number") {
     return Number.isFinite(value) ? value : null;
   }
@@ -46,7 +50,7 @@ export function getDashboardMatchWindows(matches = [], now = Date.now()) {
     );
 
   const liveMatches = eligibleMatches
-    .filter(({ match }) => isMatchInLivePhase(match))
+    .filter(({ match }) => isMatchInLivePhase(match, nowTime))
     .sort(sortByKickoffAsc)
     .map(({ match }) => match);
 
@@ -67,8 +71,9 @@ export function getDashboardMatchWindows(matches = [], now = Date.now()) {
 
   const nextMatches = eligibleMatches
     .filter(
-      ({ kickoffTime, normalizedStatus }) =>
+      ({ match, kickoffTime, normalizedStatus }) =>
         normalizedStatus === "upcoming" &&
+        !isMatchInLivePhase(match, nowTime) &&
         kickoffTime > nowTime &&
         kickoffTime <= nowTime + DASHBOARD_MATCH_WINDOW_MS,
     )

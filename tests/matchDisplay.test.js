@@ -8,7 +8,49 @@ import {
   isMatchInLivePhase,
   normalizeMatchDisplayStatus,
   shouldShowScoreBox,
+  STARTED_MATCH_FALLBACK_MS,
 } from "../src/utils/matchDisplay.js";
+
+test("normalizes provider live status aliases", () => {
+  assert.equal(normalizeMatchDisplayStatus("in_progress"), "live");
+  assert.equal(normalizeMatchDisplayStatus("STATUS_FIRST_HALF"), "live");
+  assert.equal(normalizeMatchDisplayStatus("first_half"), "live");
+  assert.equal(normalizeMatchDisplayStatus("second_half"), "live");
+});
+
+test("treats a stale upcoming match after kickoff as live within fallback window", () => {
+  const now = Date.parse("2026-06-18T22:30:00.000Z");
+  const match = {
+    status: "upcoming",
+    match_date: "2026-06-18T22:00:00.000Z",
+    team_a: "Team A",
+    team_b: "Team B",
+  };
+
+  assert.equal(isMatchInLivePhase(match, now), true);
+});
+
+test("does not treat stale upcoming matches outside fallback window as live", () => {
+  const kickoff = Date.parse("2026-06-18T22:00:00.000Z");
+  const now = kickoff + STARTED_MATCH_FALLBACK_MS + 60_000;
+  const match = {
+    status: "upcoming",
+    match_date: new Date(kickoff).toISOString(),
+  };
+
+  assert.equal(isMatchInLivePhase(match, now), false);
+});
+
+test("shows score box for stale upcoming live fallback matches", () => {
+  const match = {
+    status: "upcoming",
+    match_date: new Date(Date.now() - 30 * 60 * 1000).toISOString(),
+    team_a_score: 1,
+    team_b_score: 0,
+  };
+
+  assert.equal(shouldShowScoreBox(match), true);
+});
 
 test("normalizes match display status", () => {
   assert.equal(normalizeMatchDisplayStatus("Extra Time"), "extra_time");

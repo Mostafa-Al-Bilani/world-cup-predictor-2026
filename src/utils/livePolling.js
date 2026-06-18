@@ -6,6 +6,8 @@ const NORMALIZED_LIVE_STATUSES = new Set([
   "penalty_shootout",
 ]);
 
+import { isMatchInLivePhase } from "./matchDisplay.js";
+
 export const FAST_POLL_INTERVAL_MS = 20_000;
 export const NEAR_KICKOFF_POLL_INTERVAL_MS = 60_000;
 export const IDLE_POLL_INTERVAL_MS = 15 * 60_000;
@@ -21,8 +23,8 @@ export const normalizePollingStatus = (status) =>
 export const isLivePollingStatus = (status) =>
   NORMALIZED_LIVE_STATUSES.has(normalizePollingStatus(status));
 
-export const hasLiveMatch = (matches = []) =>
-  matches.some((match) => isLivePollingStatus(match?.status));
+export const hasLiveMatch = (matches = [], now = Date.now()) =>
+  matches.some((match) => isMatchInLivePhase(match, now));
 
 const getKickoffTime = (match) => {
   const kickoffTime = new Date(match?.match_date).getTime();

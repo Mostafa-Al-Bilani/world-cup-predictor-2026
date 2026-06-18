@@ -377,7 +377,19 @@ const normalizeEspnStatus = (status) => {
   if (description.includes('postponed') || name.includes('POSTPONED')) return 'postponed';
   if (description.includes('cancel') || description.includes('abandon') || name.includes('CANCEL') || name.includes('ABANDON')) return 'cancelled';
   if (description.includes('halftime') || detail.includes('half') || name.includes('HALFTIME')) return 'halftime';
-  if (state === 'in' || name.includes('IN_PROGRESS') || description.includes('live')) return 'live';
+  if (
+    state === 'in' ||
+    name.includes('IN_PROGRESS') ||
+    name.includes('FIRST_HALF') ||
+    name.includes('SECOND_HALF') ||
+    description.includes('live')
+  ) {
+    return 'live';
+  }
+  if (description.includes('extra time') || description.includes('overtime') || name.includes('EXTRA')) {
+    return 'extra_time';
+  }
+  if (description.includes('penalty') || name.includes('PENAL')) return 'penalties';
   return 'upcoming';
 };
 

@@ -1,8 +1,45 @@
-export const normalizeMatchDisplayStatus = (status) =>
-  String(status ?? "")
+/** Max time after kickoff to treat a stale `upcoming` row as live (sync lag fallback). */
+export const STARTED_MATCH_FALLBACK_MS = 3 * 60 * 60 * 1000;
+
+const PROVIDER_LIVE_ALIASES = new Set([
+  "in_progress",
+  "first_half",
+  "second_half",
+  "status_first_half",
+  "status_second_half",
+  "status_in_progress",
+  "status_live",
+]);
+
+const toTimestamp = (value) => {
+  if (value instanceof Date) {
+    return Number.isFinite(value.getTime()) ? value.getTime() : null;
+  }
+
+  if (typeof value === "number") {
+    return Number.isFinite(value) ? value : null;
+  }
+
+  const time = new Date(value).getTime();
+  return Number.isFinite(time) ? time : null;
+};
+
+export const normalizeMatchDisplayStatus = (status) => {
+  const normalized = String(status ?? "")
     .trim()
     .toLowerCase()
     .replace(/[\s-]+/g, "_");
+
+  if (PROVIDER_LIVE_ALIASES.has(normalized)) {
+    return "live";
+  }
+
+  if (normalized === "scheduled" || normalized === "pre") {
+    return "upcoming";
+  }
+
+  return normalized;
+};
 
 export const scoreVisibleStatuses = new Set([
   "finished",
@@ -14,7 +51,10 @@ export const scoreVisibleStatuses = new Set([
 ]);
 
 export const shouldShowScoreBox = (match) => {
-  return scoreVisibleStatuses.has(normalizeMatchDisplayStatus(match?.status));
+  return (
+    scoreVisibleStatuses.has(normalizeMatchDisplayStatus(match?.status)) ||
+    isMatchInLivePhase(match)
+  );
 };
 
 export const livePhaseStatuses = new Set([
@@ -25,8 +65,46 @@ export const livePhaseStatuses = new Set([
   "penalty_shootout",
 ]);
 
-export const isMatchInLivePhase = (match) =>
-  livePhaseStatuses.has(normalizeMatchDisplayStatus(match?.status));
+const hasKickoffStarted = (match, nowTime) => {
+  const kickoffTime = toTimestamp(match?.match_date);
+  return Number.isFinite(kickoffTime) && kickoffTime <= nowTime;
+};
+
+const isWithinStartedFallbackWindow = (match, nowTime) => {
+  const kickoffTime = toTimestamp(match?.match_date);
+  if (!Number.isFinite(kickoffTime)) return false;
+
+  return (
+    kickoffTime <= nowTime &&
+    nowTime - kickoffTime <= STARTED_MATCH_FALLBACK_MS
+  );
+};
+
+/**
+ * True when a match should appear in the live dashboard bucket.
+ * Live statuses are recognized regardless of kickoff time. When sync lags and a
+ * match is still marked `upcoming` or `delayed` after kickoff, treat it as live
+ * for a bounded post-kickoff window.
+ */
+export const isMatchInLivePhase = (match, now = Date.now()) => {
+  const nowTime = toTimestamp(now);
+  if (!Number.isFinite(nowTime)) return false;
+
+  const status = normalizeMatchDisplayStatus(match?.status);
+
+  if (livePhaseStatuses.has(status)) {
+    return true;
+  }
+
+  if (
+    (status === "upcoming" || status === "delayed") &&
+    isWithinStartedFallbackWindow(match, nowTime)
+  ) {
+    return true;
+  }
+
+  return false;
+};
 
 const readText = (value) => {
   if (typeof value !== "string") return "";
@@ -84,11 +162,15 @@ export const getLivePhaseLabel = (match) => {
     return "Half time";
   }
 
-  if (status === "live") {
+  if (status === "live" || isMatchInLivePhase(match)) {
     if (statusDetail) return statusDetail;
 
     if (match?.elapsed !== null && match?.elapsed !== undefined) {
       return `${match.elapsed} min`;
+    }
+
+    if (hasKickoffStarted(match, Date.now())) {
+      return "Live";
     }
   }
 
