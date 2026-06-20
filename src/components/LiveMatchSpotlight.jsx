@@ -75,13 +75,15 @@ export function LiveMatchSpotlight({ match, prediction }) {
       </div>
 
       {liveGoalEvents.length ? (
-        <div className="mt-3 grid min-w-0 grid-cols-1 gap-2 border-t border-white/10 pt-3 text-xs text-slate-300 sm:grid-cols-2 sm:gap-x-4">
+        <div className="mt-3 grid min-w-0 grid-cols-[minmax(0,1fr)_minmax(0,1fr)] gap-x-3 gap-y-2 border-t border-white/10 pt-3 text-xs text-slate-300 sm:gap-x-4">
           <GoalEventList
             events={liveGoalEvents.filter((event) => event.side === "team_a")}
+            teamLabel={match.team_a}
           />
           <GoalEventList
             align="right"
             events={liveGoalEvents.filter((event) => event.side === "team_b")}
+            teamLabel={match.team_b}
           />
         </div>
       ) : null}
@@ -157,13 +159,20 @@ function SpotlightScore({ score, phaseLabel, phaseClassName }) {
   );
 }
 
-function GoalEventList({ events, align = "left" }) {
+function GoalEventList({ events, align = "left", teamLabel }) {
+  const isRightAligned = align === "right";
+
+  if (!events.length) {
+    return <div className="min-w-0" aria-hidden="true" />;
+  }
+
   return (
     <ul
-      className={`min-w-0 space-y-1 ${align === "right" ? "sm:text-right" : "text-left"}`}
+      className={`min-w-0 space-y-1 ${isRightAligned ? "text-right" : "text-left"}`}
+      aria-label={teamLabel ? `${teamLabel} scorers` : undefined}
     >
       {events.map((event, index) => (
-        <li key={index} className="break-words font-semibold leading-5">
+        <li key={index} className="min-w-0 break-words font-semibold leading-5">
           {event.minute ? (
             <span className="text-emerald-200">{event.minute} </span>
           ) : null}
