@@ -11,9 +11,17 @@ import { StatusBadge } from "./StatusBadge";
 import { TeamFlag } from "./TeamFlag";
 import { formatDateTime, getUserTimeZone } from "../utils/date";
 import { formatKickoffCountdown } from "../utils/kickoffCountdown";
+import {
+  MATCH_CENTER_LAST_24H_PANEL_CLASS,
+  MATCH_CENTER_NEXT_24H_PANEL_CLASS,
+  MATCH_CENTER_PANELS_GRID_CLASS,
+} from "../utils/matchCenterLayout";
 import { normalizeMatchDisplayStatus } from "../utils/matchDisplay";
 import { getCompletedMatchScorerState } from "../utils/matchGoalEvents";
-import { getPredictionSummary } from "../utils/predictions";
+import {
+  getCompletedPredictionOutcome,
+  getPredictionSummary,
+} from "../utils/predictions";
 
 const statusLabels = {
   upcoming: "Upcoming",
@@ -88,18 +96,22 @@ export function DashboardMatchCenter({
       ) : null}
 
       <div
-        className={`grid gap-4 md:grid-cols-2 ${
+        className={`${MATCH_CENTER_PANELS_GRID_CLASS} ${
           hasLiveMatches ? "mt-5 sm:mt-6" : "mt-6"
         }`}
       >
         <MatchWindowPanel
           title="Last 24 hours"
           description="Completed matches from the previous day."
-          className="order-2 md:order-1"
+          className={MATCH_CENTER_LAST_24H_PANEL_CLASS}
         >
           {recentMatches.length ? (
             recentMatches.map((match) => (
-              <RecentCompletedCard key={match.id} match={match} />
+              <RecentCompletedCard
+                key={match.id}
+                match={match}
+                prediction={predictionByMatch.get(match.id)}
+              />
             ))
           ) : (
             <CompactEmptyState
@@ -112,7 +124,7 @@ export function DashboardMatchCenter({
         <MatchWindowPanel
           title="Next 24 hours"
           description="Upcoming fixtures that are still open for predictions."
-          className="order-1 md:order-2"
+          className={MATCH_CENTER_NEXT_24H_PANEL_CLASS}
         >
           {nextMatches.length ? (
             nextMatches.map((match) => (
@@ -174,8 +186,9 @@ function MatchWindowPanel({ title, description, className, children }) {
   );
 }
 
-function RecentCompletedCard({ match }) {
+function RecentCompletedCard({ match, prediction }) {
   const scorerState = getCompletedMatchScorerState(match);
+  const outcome = getCompletedPredictionOutcome(match, prediction);
 
   return (
     <CompactMatchCard
@@ -185,6 +198,7 @@ function RecentCompletedCard({ match }) {
       scoreBlock={
         <CompactFinishedScoreBlock match={match} scorerState={scorerState} />
       }
+      predictionOutcome={outcome}
       detail={
         <span className="inline-flex min-w-0 items-center gap-2 text-sm text-slate-300">
           <Clock size={15} className="shrink-0 text-emerald-300" />
@@ -262,30 +276,55 @@ function UpcomingCompactCard({ match, prediction, showCountdown, now }) {
   const countdown = showCountdown
     ? formatKickoffCountdown(match.match_date, now)
     : null;
+  const predictionSummary = prediction
+    ? getPredictionSummary(match, prediction)
+    : null;
 
   return (
-    <CompactMatchCard
-      match={match}
-      statusLabel={getStatusLabel(match)}
-      countdown={countdown}
-      centerContent={
-        <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-black text-slate-300">
-          VS
-        </span>
-      }
-      detail={
-        <span className="inline-flex min-w-0 items-center gap-2 text-sm text-slate-300">
-          <CalendarDays size={15} className="shrink-0 text-emerald-300" />
+    <article className="min-w-0 rounded-lg border border-white/10 bg-slate-950/55 p-3.5 lg:p-4">
+      <div className="flex min-w-0 flex-wrap items-start justify-between gap-2">
+        <p className="inline-flex min-w-0 items-center gap-2 text-xs font-bold uppercase tracking-[0.14em] text-slate-400">
+          <Trophy size={14} className="shrink-0 text-gold-300" />
+          <span className="min-w-0 break-words">{match.stage}</span>
+        </p>
+
+        <StatusBadge label={getStatusLabel(match)} />
+      </div>
+
+      {countdown ? (
+        <div className="mt-2">
+          <KickoffCountdownPill countdown={countdown} />
+        </div>
+      ) : null}
+
+      <div className="mt-3 min-w-0 space-y-2">
+        <CompactTeamName name={match.team_a} showTitle />
+        <p className="text-center text-[11px] font-black uppercase tracking-[0.18em] text-slate-500">
+          vs
+        </p>
+        <CompactTeamName name={match.team_b} align="right" showTitle />
+      </div>
+
+      <p className="mt-3 inline-flex min-w-0 items-center gap-2 text-sm text-slate-300">
+        <CalendarDays size={15} className="shrink-0 text-emerald-300" />
+        <span className="min-w-0 break-words">
           {formatDateTime(match.match_date)}
         </span>
-      }
-      note={
-        prediction
-          ? `Your pick: ${getPredictionSummary(match, prediction)}`
-          : "No prediction yet"
-      }
-      actionLabel={prediction ? "View prediction" : "Predict"}
-    />
+      </p>
+
+      <p className="mt-2 min-w-0 break-words text-sm font-semibold text-slate-200">
+        {predictionSummary
+          ? `Your pick: ${predictionSummary}`
+          : "No prediction yet"}
+      </p>
+
+      <Link
+        to={`/matches?match=${match.id}`}
+        className="mt-3 inline-flex min-h-11 w-full items-center justify-center gap-1 rounded-full border border-white/15 px-4 py-2 text-sm font-semibold text-slate-300 transition hover:border-emerald-300/40 hover:text-emerald-100"
+      >
+        {prediction ? "View prediction" : "Predict"} <ChevronRight size={16} />
+      </Link>
+    </article>
   );
 }
 
@@ -295,6 +334,7 @@ function CompactMatchCard({
   statusTone = "neutral",
   centerContent,
   scoreBlock,
+  predictionOutcome,
   detail,
   note,
   actionLabel,
@@ -330,6 +370,10 @@ function CompactMatchCard({
         </div>
       )}
 
+      {predictionOutcome ? (
+        <CompletedPredictionSummary outcome={predictionOutcome} />
+      ) : null}
+
       <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="min-w-0 space-y-1">
           <p className="min-w-0 break-words">{detail}</p>
@@ -359,6 +403,40 @@ function CompactMatchCard({
   );
 }
 
+function CompletedPredictionSummary({ outcome }) {
+  const toneClassName = {
+    exact: "text-gold-200",
+    success: "text-emerald-200",
+    incorrect: "text-rose-200/90",
+    muted: "text-slate-400",
+  }[outcome.tone ?? "muted"];
+
+  return (
+    <div className="mt-3 min-w-0 rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2.5">
+      {outcome.pickSummary ? (
+        <p className="min-w-0 break-words text-sm text-slate-200">
+          <span className="font-semibold text-slate-400">Your pick:</span>{" "}
+          {outcome.pickSummary}
+        </p>
+      ) : (
+        <p className="text-sm font-semibold text-slate-400">
+          {outcome.outcomeLabel}
+        </p>
+      )}
+
+      {outcome.pickSummary ? (
+        <p
+          className={`mt-1 min-w-0 break-words text-sm font-semibold ${toneClassName}`}
+        >
+          {outcome.pointsLabel
+            ? `${outcome.outcomeLabel} · ${outcome.pointsLabel}`
+            : outcome.outcomeLabel}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
 function KickoffCountdownPill({ countdown, className = "" }) {
   const isStartingNow = countdown.expired;
 
@@ -381,7 +459,7 @@ function KickoffCountdownPill({ countdown, className = "" }) {
   );
 }
 
-function CompactTeamName({ name, align = "left" }) {
+function CompactTeamName({ name, align = "left", showTitle = false }) {
   const isRightAligned = align === "right";
 
   return (
@@ -393,7 +471,10 @@ function CompactTeamName({ name, align = "left" }) {
       >
         {isRightAligned ? null : <TeamFlag size="sm" teamName={name} />}
 
-        <span className="min-w-0 break-words text-base font-black leading-5 text-white">
+        <span
+          className="min-w-0 break-words text-base font-black leading-5 text-white"
+          title={showTitle ? name : undefined}
+        >
           {name}
         </span>
 

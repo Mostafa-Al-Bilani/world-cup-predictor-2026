@@ -94,3 +94,68 @@ export const getAccuracy = (profile) => {
   if (!profile?.total_predictions) return 0;
   return Math.round((profile.correct_predictions / profile.total_predictions) * 100);
 };
+
+export const formatCompletedPredictionPoints = (totalPoints) => {
+  const points = Number(totalPoints ?? 0);
+
+  if (points === 1) return '+1 point';
+  if (points <= 0) return '0 points';
+  return `+${points} points`;
+};
+
+export const getCompletedPredictionOutcome = (match, prediction) => {
+  if (!prediction) {
+    return {
+      kind: 'none',
+      pickSummary: null,
+      outcomeLabel: 'No prediction submitted',
+      pointsLabel: null,
+      tone: 'muted',
+    };
+  }
+
+  const pickSummary = getPredictionSummary(match, prediction);
+  const isFinished = match?.status === 'finished';
+
+  if (!isFinished || !match?.result) {
+    return {
+      kind: 'pending',
+      pickSummary,
+      outcomeLabel: 'Result calculation pending',
+      pointsLabel: null,
+      tone: 'muted',
+    };
+  }
+
+  const points =
+    prediction.is_correct !== null && prediction.is_correct !== undefined
+      ? {
+          is_correct: prediction.is_correct === true,
+          winner_points: Number(prediction.winner_points ?? 0),
+          exact_score_points: Number(prediction.exact_score_points ?? 0),
+          total_points: getPredictionTotalPoints(prediction),
+        }
+      : calculatePredictionPoints(match, prediction);
+
+  let outcomeLabel;
+  let tone;
+
+  if (points.exact_score_points > 0) {
+    outcomeLabel = 'Exact score';
+    tone = 'exact';
+  } else if (points.is_correct === true) {
+    outcomeLabel = match.result === 'draw' ? 'Correct draw' : 'Correct winner';
+    tone = 'success';
+  } else {
+    outcomeLabel = 'Incorrect';
+    tone = 'incorrect';
+  }
+
+  return {
+    kind: 'scored',
+    pickSummary,
+    outcomeLabel,
+    pointsLabel: formatCompletedPredictionPoints(points.total_points),
+    tone,
+  };
+};
