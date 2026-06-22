@@ -15,6 +15,12 @@ import {
   MATCH_CENTER_LAST_24H_PANEL_CLASS,
   MATCH_CENTER_NEXT_24H_PANEL_CLASS,
   MATCH_CENTER_PANELS_GRID_CLASS,
+  UPCOMING_SIDEBAR_ACTION_CLASS,
+  UPCOMING_SIDEBAR_CARD_CLASS,
+  UPCOMING_SIDEBAR_HEADER_CLASS,
+  UPCOMING_SIDEBAR_METADATA_CLASS,
+  UPCOMING_SIDEBAR_TEAM_ROW_CLASS,
+  UPCOMING_SIDEBAR_VS_CLASS,
 } from "../utils/matchCenterLayout";
 import { normalizeMatchDisplayStatus } from "../utils/matchDisplay";
 import { getCompletedMatchScorerState } from "../utils/matchGoalEvents";
@@ -281,8 +287,8 @@ function UpcomingCompactCard({ match, prediction, showCountdown, now }) {
     : null;
 
   return (
-    <article className="min-w-0 rounded-lg border border-white/10 bg-slate-950/55 p-3.5 lg:p-4">
-      <div className="flex min-w-0 flex-wrap items-start justify-between gap-2">
+    <article className={UPCOMING_SIDEBAR_CARD_CLASS}>
+      <div className={UPCOMING_SIDEBAR_HEADER_CLASS}>
         <p className="inline-flex min-w-0 items-center gap-2 text-xs font-bold uppercase tracking-[0.14em] text-slate-400">
           <Trophy size={14} className="shrink-0 text-gold-300" />
           <span className="min-w-0 break-words">{match.stage}</span>
@@ -292,35 +298,35 @@ function UpcomingCompactCard({ match, prediction, showCountdown, now }) {
       </div>
 
       {countdown ? (
-        <div className="mt-2">
+        <div className="mt-1.5">
           <KickoffCountdownPill countdown={countdown} />
         </div>
       ) : null}
 
-      <div className="mt-3 min-w-0 space-y-2">
+      <div className={UPCOMING_SIDEBAR_TEAM_ROW_CLASS}>
         <CompactTeamName name={match.team_a} showTitle />
-        <p className="text-center text-[11px] font-black uppercase tracking-[0.18em] text-slate-500">
-          vs
-        </p>
+        <span className={UPCOMING_SIDEBAR_VS_CLASS}>VS</span>
         <CompactTeamName name={match.team_b} align="right" showTitle />
       </div>
 
-      <p className="mt-3 inline-flex min-w-0 items-center gap-2 text-sm text-slate-300">
-        <CalendarDays size={15} className="shrink-0 text-emerald-300" />
-        <span className="min-w-0 break-words">
-          {formatDateTime(match.match_date)}
-        </span>
-      </p>
+      <div className={UPCOMING_SIDEBAR_METADATA_CLASS}>
+        <p className="inline-flex min-w-0 items-center gap-2 text-sm text-slate-300">
+          <CalendarDays size={15} className="shrink-0 text-emerald-300" />
+          <span className="min-w-0 break-words">
+            {formatDateTime(match.match_date)}
+          </span>
+        </p>
 
-      <p className="mt-2 min-w-0 break-words text-sm font-semibold text-slate-200">
-        {predictionSummary
-          ? `Your pick: ${predictionSummary}`
-          : "No prediction yet"}
-      </p>
+        <p className="min-w-0 break-words text-sm font-semibold text-slate-200">
+          {predictionSummary
+            ? `Your pick: ${predictionSummary}`
+            : "No prediction yet"}
+        </p>
+      </div>
 
       <Link
         to={`/matches?match=${match.id}`}
-        className="mt-3 inline-flex min-h-11 w-full items-center justify-center gap-1 rounded-full border border-white/15 px-4 py-2 text-sm font-semibold text-slate-300 transition hover:border-emerald-300/40 hover:text-emerald-100"
+        className={UPCOMING_SIDEBAR_ACTION_CLASS}
       >
         {prediction ? "View prediction" : "Predict"} <ChevronRight size={16} />
       </Link>
