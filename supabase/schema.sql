@@ -3580,3 +3580,49 @@ grant execute on function public.recalculate_profile_totals(uuid) to service_rol
 grant execute on function public.recalculate_match_points(uuid) to service_role;
 grant execute on function public.get_live_group_predictions(uuid) to authenticated, service_role;
 
+-- Batch-load group member predictions for client-selected match IDs.
+drop function if exists public.get_group_predictions_for_matches(uuid, uuid[]);
+
+create function public.get_group_predictions_for_matches(
+  target_group_id uuid,
+  target_match_ids uuid[]
+)
+returns table (
+  match_id uuid,
+  user_id uuid,
+  predicted_result text,
+  predicted_home_score integer,
+  predicted_away_score integer
+)
+language sql
+security definer
+set search_path = public, extensions
+as $$
+  select
+    pr.match_id,
+    pr.user_id,
+    pr.predicted_result,
+    pr.predicted_home_score,
+    pr.predicted_away_score
+  from public.groups g
+  join public.group_members gm
+    on gm.group_id = g.id
+   and gm.status = 'accepted'
+  join public.predictions pr
+    on pr.user_id = gm.user_id
+   and pr.match_id = any(target_match_ids)
+  where g.id = target_group_id
+    and g.live_predictions_enabled = true
+    and public.is_group_member(target_group_id, auth.uid())
+    and coalesce(array_length(target_match_ids, 1), 0) > 0;
+$$;
+
+alter function public.get_group_predictions_for_matches(uuid, uuid[])
+  set search_path = public, extensions;
+
+revoke execute on function public.get_group_predictions_for_matches(uuid, uuid[])
+  from public, anon;
+
+grant execute on function public.get_group_predictions_for_matches(uuid, uuid[])
+  to authenticated, service_role;
+

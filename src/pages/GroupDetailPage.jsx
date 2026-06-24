@@ -20,8 +20,15 @@ import { TeamFlag } from "../components/TeamFlag";
 import { TopThreePodium } from "../components/TopThreePodium";
 import { useAuth } from "../context/AuthContext";
 import { groupService } from "../services/groupService";
+import { matchService } from "../services/matchService";
 import { formatDate, formatDateTime } from "../utils/date";
 import { getSafeErrorMessage } from "../utils/errors";
+import {
+  getGroupDisplayedMatches,
+  getGroupDisplayedMatchesHeading,
+  getGroupMatchStatusLabel,
+} from "../utils/groupDisplayedMatches";
+import { getGroupMatchPredictionsGridClass } from "../utils/groupMatchPredictionsLayout";
 import {
   getPredictedScoreLabel,
   getPredictionLabel,
@@ -43,9 +50,12 @@ export function GroupDetailPage() {
   const [searchResults, setSearchResults] = useState([]);
   const [editForm, setEditForm] = useState({ name: "", description: "" });
   const [confirmAction, setConfirmAction] = useState(null);
-  const [livePredictions, setLivePredictions] = useState([]);
-  const [livePredictionsLoading, setLivePredictionsLoading] = useState(false);
+  const [matches, setMatches] = useState([]);
+  const [predictionsByMatchId, setPredictionsByMatchId] = useState({});
+  const [predictionsLoadFailed, setPredictionsLoadFailed] = useState(false);
+  const [groupMatchesLoading, setGroupMatchesLoading] = useState(false);
   const [liveSettingBusy, setLiveSettingBusy] = useState(false);
+  const [now, setNow] = useState(() => Date.now());
 
   const currentMember = useMemo(
     () => members.find((member) => member.user_id === user?.id),
@@ -105,37 +115,81 @@ export function GroupDetailPage() {
     load();
   }, [load]);
 
-  const loadLivePredictions = useCallback(async () => {
+  const { displayedMatches, displayState } = useMemo(
+    () => getGroupDisplayedMatches(matches, now),
+    [matches, now],
+  );
+
+  const displayedMatchesHeading = useMemo(
+    () =>
+      getGroupDisplayedMatchesHeading(displayState, displayedMatches.length),
+    [displayState, displayedMatches.length],
+  );
+
+  const loadGroupMatchPredictions = useCallback(async () => {
     if (!group?.id || !group.live_predictions_enabled) {
-      setLivePredictions([]);
+      setMatches([]);
+      setPredictionsByMatchId({});
+      setPredictionsLoadFailed(false);
       return;
     }
 
-    setLivePredictionsLoading(true);
+    setGroupMatchesLoading(true);
 
     try {
-      const rows = await groupService.getLiveGroupPredictions(group.id);
-      setLivePredictions(rows);
+      const matchRows = await matchService.getMatches();
+      setMatches(matchRows);
+
+      const { displayedMatches: nextDisplayedMatches } =
+        getGroupDisplayedMatches(matchRows, Date.now());
+      const matchIds = nextDisplayedMatches.map((match) => match.id);
+
+      if (!matchIds.length) {
+        setPredictionsByMatchId({});
+        setPredictionsLoadFailed(false);
+        return;
+      }
+
+      try {
+        const groupedPredictions =
+          await groupService.getGroupPredictionsForMatches({
+            groupId: group.id,
+            matchIds,
+            members,
+          });
+
+        setPredictionsByMatchId(groupedPredictions);
+        setPredictionsLoadFailed(false);
+      } catch (error) {
+        setPredictionsByMatchId(
+          Object.fromEntries(matchIds.map((matchId) => [matchId, []])),
+        );
+        setPredictionsLoadFailed(true);
+        toast.error(
+          getSafeErrorMessage(error, "Could not load group match predictions."),
+        );
+      }
     } catch (error) {
       toast.error(
         getSafeErrorMessage(error, "Could not load group match predictions."),
       );
     } finally {
-      setLivePredictionsLoading(false);
+      setGroupMatchesLoading(false);
+      setNow(Date.now());
     }
-  }, [group?.id, group?.live_predictions_enabled]);
+  }, [group?.id, group?.live_predictions_enabled, members]);
 
   useEffect(() => {
-    loadLivePredictions();
+    loadGroupMatchPredictions();
 
     const intervalId = window.setInterval(() => {
-      loadLivePredictions();
+      loadGroupMatchPredictions();
     }, 60000);
 
     return () => {
       window.clearInterval(intervalId);
     };
-  }, [loadLivePredictions]);
+  }, [loadGroupMatchPredictions]);
 
   const copyInvite = async (value, label) => {
     try {
@@ -206,7 +260,9 @@ export function GroupDetailPage() {
       }));
 
       if (!enabled) {
-        setLivePredictions([]);
+        setMatches([]);
+        setPredictionsByMatchId({});
+        setPredictionsLoadFailed(false);
       }
 
       toast.success(
@@ -370,36 +426,35 @@ export function GroupDetailPage() {
               </p>
 
               <h2 className="mt-2 text-2xl font-black text-white">
-                Member picks for the next match
+                {displayedMatchesHeading}
               </h2>
             </div>
 
-            {livePredictionsLoading ? (
+            {groupMatchesLoading ? (
               <span className="text-sm font-bold text-slate-400">
                 Refreshing...
               </span>
             ) : null}
           </div>
 
-          {livePredictions.length ? (
-            <div className="mt-5 space-y-5">
-              {Object.values(
-                livePredictions.reduce((groups, row) => {
-                  if (!groups[row.match_id]) {
-                    groups[row.match_id] = {
-                      match: row,
-                      predictions: [],
-                    };
-                  }
+          {predictionsLoadFailed ? (
+            <p className="mt-4 rounded-lg border border-amber-300/30 bg-amber-300/10 p-3 text-sm text-amber-100">
+              Match cards are shown, but member predictions could not be loaded.
+              Try refreshing in a moment.
+            </p>
+          ) : null}
 
-                  groups[row.match_id].predictions.push(row);
-                  return groups;
-                }, {}),
-              ).map(({ match, predictions }) => (
+          {displayedMatches.length ? (
+            <div
+              className={getGroupMatchPredictionsGridClass(
+                displayedMatches.length,
+              )}
+            >
+              {displayedMatches.map((match) => (
                 <GroupPredictionMatchCard
-                  key={match.match_id}
+                  key={match.id}
                   match={match}
-                  predictions={predictions}
+                  predictions={predictionsByMatchId[match.id] ?? []}
                 />
               ))}
             </div>
@@ -691,11 +746,13 @@ export function GroupDetailPage() {
 }
 
 function GroupPredictionMatchCard({ match, predictions }) {
+  const statusLabel = getGroupMatchStatusLabel(match);
+
   return (
     <article className="overflow-hidden rounded-lg border border-white/10 bg-slate-950/72 shadow-xl">
       <div className="bg-pitch-lines bg-[length:32px_32px] px-5 py-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <StatusBadge label={match.match_status} />
+          <StatusBadge label={statusLabel} />
 
           <span className="rounded-full border border-emerald-300/30 bg-emerald-300/10 px-3 py-1 text-xs font-black uppercase tracking-[0.16em] text-emerald-200">
             Group picks

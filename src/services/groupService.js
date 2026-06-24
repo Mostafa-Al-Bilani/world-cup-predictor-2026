@@ -3,6 +3,7 @@ import {
   mergeOwnedGroupsWithMembershipRows,
   ownerMembershipForGroup,
 } from "../utils/groups.js";
+import { buildGroupMemberPredictionsByMatchId } from "../utils/groupPredictionRows.js";
 import { sortLeaderboardUsers } from "../utils/leaderboard.js";
 import {
   normalizeGroupInput,
@@ -640,5 +641,51 @@ export const groupService = {
 
     if (error) throw error;
     return data ?? [];
+  },
+
+  async getGroupPredictionsForMatches({ groupId, matchIds, members = [] }) {
+    const normalizedGroupId = validateUuid(groupId, "Group ID");
+    const normalizedMatchIds = (matchIds ?? []).map((matchId) =>
+      validateUuid(matchId, "Match ID"),
+    );
+
+    if (!normalizedMatchIds.length) {
+      return {};
+    }
+
+    const memberUserIds = [...members]
+      .filter((member) => member.status === "accepted")
+      .map((member) => member.user_id);
+
+    if (isDemoMode) {
+      const store = localStore.getStore();
+      const predictionRows = store.predictions.filter(
+        (prediction) =>
+          normalizedMatchIds.includes(prediction.match_id) &&
+          memberUserIds.includes(prediction.user_id),
+      );
+
+      return buildGroupMemberPredictionsByMatchId({
+        members,
+        matchIds: normalizedMatchIds,
+        predictionRows,
+      });
+    }
+
+    const { data, error } = await supabase.rpc(
+      "get_group_predictions_for_matches",
+      {
+        target_group_id: normalizedGroupId,
+        target_match_ids: normalizedMatchIds,
+      },
+    );
+
+    if (error) throw error;
+
+    return buildGroupMemberPredictionsByMatchId({
+      members,
+      matchIds: normalizedMatchIds,
+      predictionRows: data ?? [],
+    });
   },
 };
