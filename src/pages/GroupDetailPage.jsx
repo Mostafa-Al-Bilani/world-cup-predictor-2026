@@ -17,6 +17,7 @@ import { LoadingSpinner } from "../components/LoadingSpinner";
 import { ScoreboardTable } from "../components/ScoreboardTable";
 import { StatusBadge } from "../components/StatusBadge";
 import { TeamFlag } from "../components/TeamFlag";
+import { TeamLink } from "../components/team/TeamLink.jsx";
 import { TopThreePodium } from "../components/TopThreePodium";
 import { useAuth } from "../context/AuthContext";
 import { groupService } from "../services/groupService";
@@ -840,16 +841,21 @@ function GroupPredictionMatchCard({ match, predictions }) {
 function GroupPredictionTeamName({ name, align = "left" }) {
   return (
     <div className={align === "right" ? "min-w-0 text-right" : "min-w-0"}>
-      <TeamFlag
-        className={align === "right" ? "mb-3 ml-auto" : "mb-3"}
-        size="xl"
-        teamName={name}
-        variant="premium"
-      />
+      <TeamLink
+        team={name}
+        className={`inline-block ${align === "right" ? "ml-auto" : ""}`}
+      >
+        <TeamFlag
+          className={`mb-3 ${align === "right" ? "ml-auto" : ""}`}
+          size="xl"
+          teamName={name}
+          variant="premium"
+        />
 
-      <h3 className="break-words text-lg font-black text-white sm:text-xl">
-        {name}
-      </h3>
+        <h3 className="break-words text-lg font-black text-white sm:text-xl">
+          {name}
+        </h3>
+      </TeamLink>
     </div>
   );
 }

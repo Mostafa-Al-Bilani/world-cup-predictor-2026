@@ -9,6 +9,7 @@ import { CompactNoGoalsLabel, CompactScorerGroup } from "./CompactMatchScorers";
 import { LiveMatchSpotlight } from "./LiveMatchSpotlight";
 import { StatusBadge } from "./StatusBadge";
 import { TeamFlag } from "./TeamFlag";
+import { TeamLink } from "./team/TeamLink.jsx";
 import { formatDateTime, getUserTimeZone } from "../utils/date";
 import { formatKickoffCountdown } from "../utils/kickoffCountdown";
 import {
@@ -470,7 +471,8 @@ function CompactTeamName({ name, align = "left", showTitle = false }) {
 
   return (
     <div className={`min-w-0 ${isRightAligned ? "text-right" : ""}`}>
-      <div
+      <TeamLink
+        team={name}
         className={`flex min-w-0 items-center gap-2 ${
           isRightAligned ? "justify-end" : ""
         }`}
@@ -485,7 +487,7 @@ function CompactTeamName({ name, align = "left", showTitle = false }) {
         </span>
 
         {isRightAligned ? <TeamFlag size="sm" teamName={name} /> : null}
-      </div>
+      </TeamLink>
     </div>
   );
 }

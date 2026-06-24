@@ -4,6 +4,7 @@ import toast from "react-hot-toast";
 import { EmptyState } from "../components/EmptyState";
 import { LoadingSpinner } from "../components/LoadingSpinner";
 import { StatusBadge } from "../components/StatusBadge";
+import { TeamVsLabel } from "../components/team/TeamLink.jsx";
 import { useAuth } from "../context/AuthContext";
 import { championService } from "../services/championService";
 import { matchService } from "../services/matchService";
@@ -404,7 +405,7 @@ export function MyPredictionsPage() {
                 {rows.map(({ match, prediction }) => (
                   <tr key={prediction.id} className="hover:bg-white/[0.03]">
                     <td className="px-5 py-4 font-bold text-white">
-                      {match.team_a} vs {match.team_b}
+                      <TeamVsLabel teamA={match.team_a} teamB={match.team_b} />
                     </td>
 
                     <td className="px-5 py-4 text-slate-300">

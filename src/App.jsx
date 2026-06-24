@@ -24,6 +24,8 @@ import { NotFoundPage } from "./pages/NotFoundPage";
 import { RegisterPage } from "./pages/RegisterPage";
 import { ResetPasswordPage } from "./pages/ResetPasswordPage";
 import { ScoreboardPage } from "./pages/ScoreboardPage";
+import { TeamDetailPage } from "./pages/TeamDetailPage";
+import { TeamsPage } from "./pages/TeamsPage";
 import { UsernameSetupPage } from "./pages/UsernameSetupPage";
 import { hasSupabaseConfigurationError } from "./services/supabaseClient";
 
@@ -63,6 +65,8 @@ function ApplicationRoutes() {
 
           <Route path="matches" element={<MatchesPage />} />
           <Route path="scoreboard" element={<ScoreboardPage />} />
+          <Route path="teams" element={<TeamsPage />} />
+          <Route path="teams/:teamSlug" element={<TeamDetailPage />} />
 
           <Route
             path="my-predictions"

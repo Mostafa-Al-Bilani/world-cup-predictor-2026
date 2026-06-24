@@ -14,6 +14,7 @@ import { getMissingPredictionCount } from "../utils/matches";
 const baseNavItems = [
   { to: "/", label: "Home" },
   { to: "/matches", label: "Matches", badgeKey: "missingPredictions" },
+  { to: "/teams", label: "Teams" },
   { to: "/scoreboard", label: "Scoreboard" },
   { to: "/my-predictions", label: "My Predictions" },
 ];

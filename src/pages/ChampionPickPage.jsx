@@ -4,6 +4,7 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { Crown } from "lucide-react";
 import { LoadingSpinner } from "../components/LoadingSpinner";
 import { TeamPicker } from "../components/TeamPicker";
+import { TeamLink } from "../components/team/TeamLink.jsx";
 import { useAuth } from "../context/AuthContext";
 import { championService } from "../services/championService";
 import {
@@ -152,7 +153,10 @@ export function ChampionPickPage() {
           <div className="mt-4 space-y-4">
             <div className="rounded-lg border border-emerald-300/30 bg-emerald-300/10 px-4 py-3 text-sm text-emerald-100">
               Your pick is locked:{" "}
-              <strong>{championPrediction.predicted_team}</strong>.
+              <TeamLink team={championPrediction.predicted_team}>
+                <strong>{championPrediction.predicted_team}</strong>
+              </TeamLink>
+              .
             </div>
             <button
               type="button"

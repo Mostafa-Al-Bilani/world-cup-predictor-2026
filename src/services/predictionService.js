@@ -58,6 +58,33 @@ export const predictionService = {
     if (error) throw error;
     return data;
   },
+
+  async getPredictionsForMatchIds(matchIds = []) {
+    const normalizedMatchIds = [...new Set((matchIds ?? []).filter(Boolean))];
+
+    if (!normalizedMatchIds.length) {
+      return [];
+    }
+
+    if (isDemoMode) {
+      const store = localStore.getStore();
+      const idSet = new Set(normalizedMatchIds);
+
+      return store.predictions.filter((prediction) =>
+        idSet.has(prediction.match_id),
+      );
+    }
+
+    const currentUserId = await getCurrentUserId();
+    const { data, error } = await supabase
+      .from("predictions")
+      .select("*")
+      .eq("user_id", currentUserId)
+      .in("match_id", normalizedMatchIds);
+
+    if (error) throw error;
+    return data ?? [];
+  },
   async upsertPrediction({ userId, matchId, predictedResult, predictedHomeScore = null, predictedAwayScore = null }) {
     const normalizedMatchId = validateUuid(matchId, 'Match ID');
     const normalizedResult = validatePredictionResult(predictedResult);

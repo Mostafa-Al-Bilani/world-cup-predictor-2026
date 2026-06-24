@@ -1,6 +1,7 @@
 import { ChevronRight, Lock, Trophy } from "lucide-react";
 import { Link } from "react-router-dom";
 import { TeamFlag } from "./TeamFlag";
+import { TeamLink } from "./team/TeamLink.jsx";
 import {
   getLiveGoalEvents,
   getLivePhaseClassName,
@@ -128,9 +129,10 @@ function SpotlightTeam({ name, align = "left" }) {
 
   return (
     <div className={`min-w-0 ${isRightAligned ? "sm:text-right" : ""}`}>
-      <div
+      <TeamLink
+        team={name}
         className={`flex min-w-0 items-center gap-2 ${
-          isRightAligned ? "sm:justify-end" : ""
+          isRightAligned ? "sm:justify-end sm:ml-auto" : ""
         }`}
       >
         {isRightAligned ? null : <TeamFlag size="md" teamName={name} />}
@@ -140,7 +142,7 @@ function SpotlightTeam({ name, align = "left" }) {
         </span>
 
         {isRightAligned ? <TeamFlag size="md" teamName={name} /> : null}
-      </div>
+      </TeamLink>
     </div>
   );
 }

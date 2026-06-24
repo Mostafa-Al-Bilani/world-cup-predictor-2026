@@ -1,10 +1,12 @@
-import { CheckCircle2, Lock, Save, Trophy } from "lucide-react";
+import { CheckCircle2, ExternalLink, Lock, Save, Trophy } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import toast from "react-hot-toast";
 import { EmptyState } from "../components/EmptyState";
 import { LoadingSpinner } from "../components/LoadingSpinner";
 import { TeamFlag } from "../components/TeamFlag";
 import { useAuth } from "../context/AuthContext";
+import { getTeamSlug, isRealTeam } from "../utils/teamIdentity.js";
 import { championService } from "../services/championService";
 import { matchService } from "../services/matchService";
 import { stagePredictionService } from "../services/stagePredictionService";
@@ -598,6 +600,17 @@ export function BracketPredictionsPage() {
                                   <span className="min-w-0 flex-1 truncate text-sm font-black">
                                     {team}
                                   </span>
+
+                                  {isRealTeam(team) && getTeamSlug(team) ? (
+                                    <Link
+                                      to={`/teams/${getTeamSlug(team)}`}
+                                      aria-label={`View ${team} team page`}
+                                      onClick={(event) => event.stopPropagation()}
+                                      className="inline-flex shrink-0 rounded-full border border-white/10 p-1.5 text-slate-300 transition hover:border-emerald-300/50 hover:text-emerald-200 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-300"
+                                    >
+                                      <ExternalLink size={14} />
+                                    </Link>
+                                  ) : null}
 
                                   <span className="shrink-0 rounded-full bg-slate-950/80 px-2 py-1 text-[10px] font-black uppercase text-slate-400">
                                     {teamGroupMap.get(team) ?? "Other"}

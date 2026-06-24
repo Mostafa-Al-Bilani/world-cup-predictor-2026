@@ -4,6 +4,7 @@ import { Link } from "react-router-dom";
 import { PredictionButton } from "./PredictionButton";
 import { StatusBadge } from "./StatusBadge";
 import { TeamFlag } from "./TeamFlag";
+import { TeamLink } from "./team/TeamLink.jsx";
 import { formatDateTime, isMatchLocked } from "../utils/date";
 import { isPlaceholderTeamName } from "../utils/matches";
 import {
@@ -560,16 +561,21 @@ function PredictionLabel({ name }) {
 function TeamName({ name, align = "left" }) {
   return (
     <div className={align === "right" ? "min-w-0 text-right" : "min-w-0"}>
-      <TeamFlag
-        className={align === "right" ? "mb-3 ml-auto" : "mb-3"}
-        size="xl"
-        teamName={name}
-        variant="premium"
-      />
+      <TeamLink
+        team={name}
+        className={`inline-block ${align === "right" ? "ml-auto" : ""}`}
+      >
+        <TeamFlag
+          className={`mb-3 ${align === "right" ? "ml-auto" : ""}`}
+          size="xl"
+          teamName={name}
+          variant="premium"
+        />
 
-      <h3 className="break-words text-lg font-black text-white sm:text-xl">
-        {name}
-      </h3>
+        <h3 className="break-words text-lg font-black text-white sm:text-xl">
+          {name}
+        </h3>
+      </TeamLink>
     </div>
   );
 }

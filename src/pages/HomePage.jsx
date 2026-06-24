@@ -14,6 +14,7 @@ import { DashboardMatchCenter } from "../components/DashboardMatchCenter";
 import { EmptyState } from "../components/EmptyState";
 import { LoadingSpinner } from "../components/LoadingSpinner";
 import { MatchCard } from "../components/MatchCard";
+import { TeamVsLabel } from "../components/team/TeamLink.jsx";
 import { TopThreePodium } from "../components/TopThreePodium";
 import { useAuth } from "../context/AuthContext";
 import { groupService } from "../services/groupService";
@@ -525,7 +526,7 @@ function PublicHome({
                       </p>
 
                       <h3 className="mt-2 text-lg font-black text-white">
-                        {match.team_a} vs {match.team_b}
+                        <TeamVsLabel teamA={match.team_a} teamB={match.team_b} />
                       </h3>
                     </div>
 
@@ -683,7 +684,7 @@ function NextPredictionCard({ match }) {
       </p>
 
       <h3 className="mt-2 text-xl font-black text-white">
-        {match.team_a} vs {match.team_b}
+        <TeamVsLabel teamA={match.team_a} teamB={match.team_b} />
       </h3>
 
       <p className="mt-2 flex items-center gap-2 text-sm text-slate-300">
@@ -724,7 +725,7 @@ function NextKickoffContent({ match, remaining }) {
   return (
     <>
       <h2 className="mt-4 text-2xl font-black">
-        {match.team_a} vs {match.team_b}
+        <TeamVsLabel teamA={match.team_a} teamB={match.team_b} />
       </h2>
 
       <p className="mt-2 flex items-center gap-2 text-sm text-slate-300">
