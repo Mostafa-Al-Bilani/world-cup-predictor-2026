@@ -13,6 +13,7 @@ import { getSafeErrorMessage } from "../utils/errors";
 import {
   STAGE_PREDICTION_CONFIGS,
   getActualTeamsForStage,
+  getRoundOf32DeadlineBeirutMessage,
   getStageLockAt,
   getStageOpenAt,
   getStageWindowMessage,
@@ -428,7 +429,7 @@ export function BracketPredictionsPage() {
         </p>
 
         <p className="mt-1 text-sm text-slate-200">
-          Round of 32 closes on June 16, 2026. Later rounds open after the
+          {getRoundOf32DeadlineBeirutMessage()} Later rounds open after the
           previous round&apos;s qualified teams are known, then close 24 hours
           later.
         </p>
@@ -632,7 +633,9 @@ export function BracketPredictionsPage() {
                         ? isComplete
                           ? "Ready to save."
                           : `Select exactly ${stage.requiredCount} teams before saving.`
-                        : "This stage is read-only because it is locked or scored."}
+                        : locked && stage.key === "round_of_32"
+                          ? "Round of 32 selections are locked."
+                          : "This stage is read-only because it is locked or scored."}
                     </p>
 
                     <button

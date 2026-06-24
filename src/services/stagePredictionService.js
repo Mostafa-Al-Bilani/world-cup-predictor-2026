@@ -1,6 +1,7 @@
 import { worldCupMatches } from "../data/matches";
 import {
   STAGE_PREDICTION_CONFIGS,
+  ROUND_OF_32_LOCK_AT,
   calculateStagePredictionPoints,
   getActualTeamsForStage,
   getStageLockAt,
@@ -13,8 +14,6 @@ import { validateUuid } from "../utils/validation";
 import { championService } from "./championService";
 import { isDemoMode, supabase } from "./supabaseClient";
 import { localStore } from "./localStore";
-
-const ROUND_OF_32_LOCK_AT = "2026-06-15T21:00:00.000Z";
 
 const getCurrentUserId = async () => {
   const { data, error } = await supabase.auth.getUser();

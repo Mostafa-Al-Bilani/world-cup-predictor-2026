@@ -41,7 +41,7 @@ export const STAGE_PREDICTION_CONFIGS = STAGE_CONFIGS;
 
 const STAGE_BY_KEY = new Map(STAGE_CONFIGS.map((stage) => [stage.key, stage]));
 
-const ROUND_OF_32_LOCK_AT = "2026-06-15T21:00:00.000Z";
+export const ROUND_OF_32_LOCK_AT = "2026-06-25T21:00:00.000Z";
 
 const PLACEHOLDER_TEAM_PATTERN =
   /^(?:tbd|to be determined|[123][a-l](?:\/[a-l])*|[a-l][123]?|w\d+|l\d+|group\s+[a-l]\s+(?:1st|2nd|3rd)\s+place|round\s+of\s+\d+\s+\d+\s+winner|round\s+of\s+\d+\s+\d+\s+loser|quarterfinal\s+\d+\s+winner|quarterfinal\s+\d+\s+loser|semifinal\s+\d+\s+winner|semifinal\s+\d+\s+loser)$/i;
@@ -163,6 +163,32 @@ export const isStageLocked = (lockAt, now = Date.now()) => {
   return Number.isFinite(timestamp) && timestamp <= now;
 };
 
+export const getRoundOf32DeadlineBeirutMessage = (
+  lockAt = ROUND_OF_32_LOCK_AT,
+) => {
+  const deadlineTime = new Date(lockAt).getTime();
+
+  if (!Number.isFinite(deadlineTime)) {
+    return "Round of 32 selections lock at midnight, Beirut time.";
+  }
+
+  const closingInstant = new Date(deadlineTime - 1_000);
+  const datePart = new Intl.DateTimeFormat("en-US", {
+    timeZone: "Asia/Beirut",
+    weekday: "long",
+    month: "long",
+    day: "numeric",
+  }).format(closingInstant);
+  const timePart = new Intl.DateTimeFormat("en-US", {
+    timeZone: "Asia/Beirut",
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+  }).format(closingInstant);
+
+  return `Round of 32 selections close ${datePart} at ${timePart} (Beirut time).`;
+};
+
 export const getStageWindowMessage = ({
   stage,
   lockAt,
@@ -172,7 +198,7 @@ export const getStageWindowMessage = ({
   const stageKey = normalizeStagePredictionStage(stage);
 
   if (stageKey === "round_of_32") {
-    return "Round of 32 closes on June 16, 2026.";
+    return getRoundOf32DeadlineBeirutMessage(lockAt ?? ROUND_OF_32_LOCK_AT);
   }
 
   if (!openedAt) {

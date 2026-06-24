@@ -2559,7 +2559,7 @@ from public.public_latest_successful_sync;
 
 -- ---------------------------------------------------------------------
 -- Bracket prediction windows.
--- Round of 32 locks June 16, 2026 00:00 GMT+3.
+-- Round of 32 locks Friday, June 26, 2026 00:00 Asia/Beirut (2026-06-25T21:00:00Z).
 -- Later rounds open when their team pool is complete, then lock 24h later.
 -- ---------------------------------------------------------------------
 
@@ -2598,7 +2598,7 @@ insert into public.stage_prediction_windows (
 values (
   'round_of_32',
   '2026-01-01 00:00:00+00',
-  '2026-06-16 00:00:00+03',
+  '2026-06-26 00:00:00+03',
   now()
 )
 on conflict (stage) do update set
@@ -2691,7 +2691,7 @@ begin
   values (
     'round_of_32',
     '2026-01-01 00:00:00+00',
-    '2026-06-16 00:00:00+03',
+    '2026-06-26 00:00:00+03',
     now()
   )
   on conflict (stage) do update set
