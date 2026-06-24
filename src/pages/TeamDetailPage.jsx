@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { MapPin } from "lucide-react";
 import { Link, useParams } from "react-router-dom";
 import { EmptyState } from "../components/EmptyState.jsx";
@@ -6,18 +6,30 @@ import { LoadingSpinner } from "../components/LoadingSpinner.jsx";
 import { TeamFlag } from "../components/TeamFlag.jsx";
 import { TeamMatchCard } from "../components/team/TeamMatchCard.jsx";
 import { useAuth } from "../context/AuthContext.jsx";
+import { MATCHES_UPDATED_EVENT } from "../hooks/useLiveMatchNotifications.js";
+import {
+  PREDICTIONS_UPDATED_EVENT,
+  predictionService,
+} from "../services/predictionService.js";
 import { teamService } from "../services/teamService.js";
 import { formatDateTime } from "../utils/date.js";
 import { getSafeErrorMessage } from "../utils/errors.js";
+import { getLivePhaseLabel } from "../utils/matchDisplay.js";
 import {
-  getLivePhaseLabel,
-} from "../utils/matchDisplay.js";
-import { getOpponentInMatch } from "../utils/teamIdentity.js";
+  getOpponentInMatch,
+} from "../utils/teamIdentity.js";
+import { calculateTeamGoalStats } from "../utils/teamGoalStats.js";
+import {
+  calculateTeamPredictionImpact,
+  groupPredictionsByMatchId,
+} from "../utils/teamPredictionImpact.js";
+import { mergeTeamMatchesFromUpdate } from "../utils/teamDirectoryLive.js";
 import {
   filterTeamMatches,
   getTeamTournamentStatus,
   TEAM_MATCH_FILTERS,
 } from "../utils/teamMatchOrdering.js";
+import { calculateTeamTournamentStats } from "../utils/teamTournamentStats.js";
 
 const MATCH_FILTERS = [
   { value: TEAM_MATCH_FILTERS.ALL, label: "All" },
@@ -66,13 +78,28 @@ function StatCard({ label, value, secondary }) {
   );
 }
 
-function ImpactRow({ label, value, pending }) {
+function AnalyticsKpi({ label, value, accent = false }) {
   return (
-    <div className="flex items-start justify-between gap-4 border-b border-white/10 py-3 last:border-b-0">
-      <span className="text-sm text-slate-300">{label}</span>
-      <span className="text-right text-sm font-black text-white">
-        {pending ? "Result calculation pending" : value}
-      </span>
+    <div className="min-w-0">
+      <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-slate-500">
+        {label}
+      </p>
+      <p
+        className={`mt-1 text-2xl font-black ${
+          accent ? "text-gold-300" : "text-white"
+        }`}
+      >
+        {value}
+      </p>
+    </div>
+  );
+}
+
+function SecondaryMetric({ label, value }) {
+  return (
+    <div className="flex items-center justify-between gap-3 rounded-lg border border-white/10 bg-white/[0.02] px-3 py-2.5 text-sm">
+      <span className="text-slate-400">{label}</span>
+      <span className="font-black text-white">{value}</span>
     </div>
   );
 }
@@ -80,11 +107,26 @@ function ImpactRow({ label, value, pending }) {
 export function TeamDetailPage() {
   const { teamSlug } = useParams();
   const { user, isAuthenticated } = useAuth();
-  const [pageData, setPageData] = useState(null);
+  const [team, setTeam] = useState(null);
+  const [matches, setMatches] = useState([]);
+  const [predictionsByMatchId, setPredictionsByMatchId] = useState({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [matchFilter, setMatchFilter] = useState(TEAM_MATCH_FILTERS.ALL);
   const [now, setNow] = useState(() => Date.now());
+
+  const refreshPredictions = useCallback(async (teamMatches, userId) => {
+    if (!userId || !teamMatches.length) {
+      setPredictionsByMatchId({});
+      return;
+    }
+
+    const predictions = await predictionService.getPredictionsForMatchIds(
+      teamMatches.map((match) => match.id),
+    );
+
+    setPredictionsByMatchId(groupPredictionsByMatchId(predictions));
+  }, []);
 
   useEffect(() => {
     const intervalId = window.setInterval(() => setNow(Date.now()), 30_000);
@@ -106,10 +148,20 @@ export function TeamDetailPage() {
 
         if (cancelled) return;
 
-        setPageData(data);
+        if (!data) {
+          setTeam(null);
+          setMatches([]);
+          setPredictionsByMatchId({});
+          return;
+        }
+
+        setTeam(data.team);
+        setMatches(data.matches);
+        setPredictionsByMatchId(data.predictionsByMatchId);
       } catch (loadError) {
         if (!cancelled) {
-          setPageData(null);
+          setTeam(null);
+          setMatches([]);
           setError(getSafeErrorMessage(loadError, "Could not load team."));
         }
       } finally {
@@ -126,32 +178,90 @@ export function TeamDetailPage() {
     };
   }, [teamSlug, user?.id]);
 
+  useEffect(() => {
+    if (!team?.name) return undefined;
+
+    const handleMatchesUpdated = (event) => {
+      if (!Array.isArray(event.detail?.matches)) return;
+
+      setMatches((currentMatches) =>
+        mergeTeamMatchesFromUpdate(
+          currentMatches,
+          event.detail.matches,
+          team.name,
+        ),
+      );
+    };
+
+    window.addEventListener(MATCHES_UPDATED_EVENT, handleMatchesUpdated);
+
+    return () => {
+      window.removeEventListener(MATCHES_UPDATED_EVENT, handleMatchesUpdated);
+    };
+  }, [team?.name]);
+
+  useEffect(() => {
+    if (!team?.name || !user?.id) return undefined;
+
+    const handlePredictionsUpdated = () => {
+      refreshPredictions(matches, user.id).catch(() => undefined);
+    };
+
+    window.addEventListener(PREDICTIONS_UPDATED_EVENT, handlePredictionsUpdated);
+
+    return () => {
+      window.removeEventListener(
+        PREDICTIONS_UPDATED_EVENT,
+        handlePredictionsUpdated,
+      );
+    };
+  }, [matches, refreshPredictions, team?.name, user?.id]);
+
+  const tournamentStats = useMemo(() => {
+    if (!team) return null;
+    return calculateTeamTournamentStats(matches, team.name);
+  }, [matches, team]);
+
+  const predictionImpact = useMemo(() => {
+    if (!team) return null;
+
+    return calculateTeamPredictionImpact({
+      matches,
+      team: team.name,
+      predictionsByMatchId,
+    });
+  }, [matches, predictionsByMatchId, team]);
+
+  const goalStats = useMemo(() => {
+    if (!team) return null;
+    return calculateTeamGoalStats(matches, team.name);
+  }, [matches, team]);
+
   const filteredMatches = useMemo(() => {
-    if (!pageData) return [];
+    if (!team) return [];
 
     return filterTeamMatches({
-      matches: pageData.matches,
-      team: pageData.team.name,
+      matches,
+      team: team.name,
       filter: matchFilter,
       now,
     });
-  }, [pageData, matchFilter, now]);
+  }, [matches, team, matchFilter, now]);
 
   const featuredMatch = useMemo(() => {
-    if (!pageData) return null;
-
-    return getFeaturedMatch(pageData.matches, pageData.team.name, now);
-  }, [pageData, now]);
+    if (!team) return null;
+    return getFeaturedMatch(matches, team.name, now);
+  }, [matches, team, now]);
 
   const tournamentStatus = useMemo(() => {
-    if (!pageData) return null;
+    if (!team) return null;
 
     return getTeamTournamentStatus({
-      matches: pageData.matches,
-      team: pageData.team.name,
+      matches,
+      team: team.name,
       now,
     });
-  }, [pageData, now]);
+  }, [matches, team, now]);
 
   if (loading) {
     return (
@@ -161,7 +271,7 @@ export function TeamDetailPage() {
     );
   }
 
-  if (!pageData) {
+  if (!team || !tournamentStats || !predictionImpact || !goalStats) {
     return (
       <main className="mx-auto grid min-h-[68vh] max-w-3xl place-items-center px-4 py-16 text-center">
         <div>
@@ -184,9 +294,6 @@ export function TeamDetailPage() {
       </main>
     );
   }
-
-  const { team, tournamentStats, predictionImpact, goalStats, predictionsByMatchId } =
-    pageData;
 
   return (
     <main className="mx-auto max-w-7xl px-4 py-10 sm:px-6 lg:px-8">
@@ -248,6 +355,9 @@ export function TeamDetailPage() {
 
       <section className="mt-8">
         <h2 className="text-lg font-black text-white">Tournament statistics</h2>
+        <p className="mt-1 text-xs text-slate-500">
+          Completed matches only — live fixtures update after full time.
+        </p>
         <div className="mt-4 grid grid-cols-2 gap-3 min-[768px]:grid-cols-4">
           <StatCard label="Matches played" value={tournamentStats.played} />
           <StatCard label="Wins" value={tournamentStats.wins} />
@@ -288,51 +398,57 @@ export function TeamDetailPage() {
         </div>
       </section>
 
-      <section className="mt-8 grid gap-6 min-[1024px]:grid-cols-[minmax(0,1.2fr)_minmax(0,0.8fr)]">
-        <div className="min-w-0 rounded-lg border border-white/10 bg-slate-950/72 p-5">
+      <section className="mt-8 grid items-start gap-6 min-[1024px]:grid-cols-2">
+        <div className="min-w-0 rounded-xl border border-white/15 bg-slate-950/72 p-5">
           <h2 className="text-lg font-black text-white">Your prediction impact</h2>
+          <p className="mt-1 text-xs text-slate-500">
+            Prediction impact updates after final results are confirmed.
+          </p>
 
           {isAuthenticated ? (
             <>
               {predictionImpact.hasPendingScoring ? (
-                <p className="mt-2 text-xs text-amber-100">
+                <p className="mt-3 rounded-lg border border-amber-300/25 bg-amber-300/10 px-3 py-2 text-xs text-amber-100">
                   Some finished matches are still waiting for official scoring.
                 </p>
               ) : null}
 
-              <div className="mt-4">
-                <ImpactRow
+              <div className="mt-4 grid grid-cols-2 gap-4 border-b border-white/10 pb-4">
+                <AnalyticsKpi
                   label="Points earned"
                   value={predictionImpact.pointsEarned}
-                  pending={false}
+                  accent
                 />
-                <ImpactRow
-                  label="Potential points missed"
-                  value={predictionImpact.potentialPointsMissed}
+                <AnalyticsKpi
+                  label="Prediction accuracy"
+                  value={`${predictionImpact.predictionAccuracy}%`}
                 />
-                <ImpactRow
-                  label="Unclaimed from missing predictions"
-                  value={predictionImpact.unclaimedPoints}
-                />
-                <ImpactRow
+              </div>
+
+              <div className="mt-4 grid gap-2 sm:grid-cols-2">
+                <SecondaryMetric
                   label="Correct results"
                   value={predictionImpact.correctResults}
                 />
-                <ImpactRow
+                <SecondaryMetric
                   label="Exact scores"
                   value={predictionImpact.exactScores}
                 />
-                <ImpactRow
-                  label="Incorrect predictions"
+                <SecondaryMetric
+                  label="Incorrect"
                   value={predictionImpact.incorrectPredictions}
                 />
-                <ImpactRow
-                  label="Matches not predicted"
+                <SecondaryMetric
+                  label="Not predicted"
                   value={predictionImpact.matchesNotPredicted}
                 />
-                <ImpactRow
-                  label="Prediction accuracy"
-                  value={`${predictionImpact.predictionAccuracy}%`}
+                <SecondaryMetric
+                  label="Potential points missed"
+                  value={predictionImpact.potentialPointsMissed}
+                />
+                <SecondaryMetric
+                  label="Unclaimed points"
+                  value={predictionImpact.unclaimedPoints}
                 />
               </div>
             </>
@@ -343,54 +459,74 @@ export function TeamDetailPage() {
           )}
         </div>
 
-        <div className="min-w-0 rounded-lg border border-white/10 bg-slate-950/72 p-5">
-          <h2 className="text-lg font-black text-white">Goal breakdown</h2>
-          <div className="mt-4 space-y-3 text-sm">
-            <div className="flex justify-between gap-3">
-              <span className="text-slate-300">Goals scored</span>
-              <span className="font-black text-white">{goalStats.goalsScored}</span>
+        <div className="min-w-0 rounded-xl border border-white/15 bg-slate-950/72 p-5">
+          <div className="flex flex-wrap items-start justify-between gap-2">
+            <div>
+              <h2 className="text-lg font-black text-white">Goal breakdown</h2>
+              {goalStats.includesLiveMatch ? (
+                <p className="mt-1 text-xs text-emerald-200">
+                  Includes current live match
+                </p>
+              ) : null}
             </div>
-            <div className="flex justify-between gap-3">
-              <span className="text-slate-300">Goals conceded</span>
-              <span className="font-black text-white">{goalStats.goalsConceded}</span>
-            </div>
-            <div className="flex justify-between gap-3">
-              <span className="text-slate-300">Open-play goals</span>
-              <span className="font-black text-white">{goalStats.openPlayGoals}</span>
-            </div>
-            <div className="flex justify-between gap-3">
-              <span className="text-slate-300">Penalty goals</span>
-              <span className="font-black text-white">{goalStats.penaltyGoals}</span>
-            </div>
-            <div className="flex justify-between gap-3">
-              <span className="text-slate-300">Own-goal benefits</span>
-              <span className="font-black text-white">{goalStats.ownGoalBenefits}</span>
-            </div>
-            <div className="flex justify-between gap-3">
-              <span className="text-slate-300">Own goals committed</span>
-              <span className="font-black text-white">{goalStats.ownGoalsCommitted}</span>
-            </div>
+
+            {goalStats.includesLiveMatch ? (
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-300/35 bg-emerald-300/10 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.18em] text-emerald-100">
+                <span
+                  className="h-1.5 w-1.5 rounded-full bg-emerald-200 motion-safe:animate-pulse motion-reduce:animate-none"
+                  aria-hidden="true"
+                />
+                Live
+              </span>
+            ) : null}
+          </div>
+
+          {goalStats.includesLiveMatch ? (
+            <p className="mt-2 text-xs text-slate-500">
+              Live goal statistics update as match data arrives.
+            </p>
+          ) : null}
+
+          <div className="mt-4 grid grid-cols-2 gap-4 border-b border-white/10 pb-4">
+            <AnalyticsKpi label="Goals scored" value={goalStats.goalsScored} />
+            <AnalyticsKpi
+              label="Goals conceded"
+              value={goalStats.goalsConceded}
+            />
+          </div>
+
+          <div className="mt-4 grid gap-2 sm:grid-cols-2">
+            <SecondaryMetric label="Open play" value={goalStats.openPlayGoals} />
+            <SecondaryMetric label="Penalties" value={goalStats.penaltyGoals} />
+            <SecondaryMetric
+              label="Own-goal benefits"
+              value={goalStats.ownGoalBenefits}
+            />
+            <SecondaryMetric
+              label="Own goals committed"
+              value={goalStats.ownGoalsCommitted}
+            />
           </div>
 
           {goalStats.hasIncompleteEventData ? (
-            <p className="mt-4 text-xs text-slate-400">
-              Detailed scorer data is available for {goalStats.detailedGoalsAvailable}{" "}
-              of {goalStats.goalsScored} goals.
+            <p className="mt-4 rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 text-xs text-slate-400">
+              Detailed scorer data is available for{" "}
+              {goalStats.detailedGoalsAvailable} of {goalStats.goalsScored} goals.
             </p>
           ) : null}
 
           {goalStats.topScorers.length ? (
             <div className="mt-5 border-t border-white/10 pt-4">
-              <p className="text-xs font-bold uppercase tracking-[0.18em] text-slate-400">
+              <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-slate-500">
                 Top scorers
               </p>
-              <ol className="mt-3 space-y-2 text-sm">
+              <ol className="mt-3 space-y-2">
                 {goalStats.topScorers.map((scorer, index) => (
                   <li
                     key={scorer.name}
-                    className="flex items-center justify-between gap-3"
+                    className="flex items-center justify-between gap-3 text-sm"
                   >
-                    <span className="text-slate-300">
+                    <span className="text-slate-400">
                       {index + 1}. {scorer.name}
                     </span>
                     <span className="font-black text-white">{scorer.count}</span>
@@ -398,12 +534,6 @@ export function TeamDetailPage() {
                 ))}
               </ol>
             </div>
-          ) : null}
-
-          {goalStats.ownGoalBenefits > 0 ? (
-            <p className="mt-3 text-xs text-slate-400">
-              Own-goal benefit {goalStats.ownGoalBenefits}
-            </p>
           ) : null}
         </div>
       </section>

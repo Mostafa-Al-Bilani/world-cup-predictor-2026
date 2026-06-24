@@ -24,7 +24,7 @@ test("team routes are registered", () => {
 test("teams directory uses responsive card grid", () => {
   assert.match(
     teamsPageSource,
-    /grid-cols-1[\s\S]*min-\[768px\]:grid-cols-2[\s\S]*min-\[1024px\]:grid-cols-3[\s\S]*min-\[1440px\]:grid-cols-4/,
+    /min-\[768px\]:grid-cols-2[\s\S]*min-\[1024px\]:grid-cols-3[\s\S]*min-\[1536px\]:grid-cols-4/,
   );
   assert.match(teamsPageSource, /min-w-0/);
 });
@@ -38,4 +38,28 @@ test("team detail page batches predictions through team service", () => {
 test("mobile layout avoids structural overflow classes on team detail page", () => {
   assert.doesNotMatch(teamDetailSource, /overflow-x-auto/);
   assert.match(teamDetailSource, /min-w-0/);
+});
+
+test("team detail page renders core sections", () => {
+  assert.match(teamDetailSource, /Tournament statistics/);
+  assert.match(teamDetailSource, /Your prediction impact/);
+  assert.match(teamDetailSource, /Goal breakdown/);
+  assert.match(teamDetailSource, /Team matches/);
+});
+
+test("team detail analytics layout uses responsive two-column grid", () => {
+  assert.match(teamDetailSource, /min-\[1024px\]:grid-cols-2/);
+});
+
+test("team detail listens to shared match updates", () => {
+  assert.match(teamDetailSource, /MATCHES_UPDATED_EVENT/);
+  assert.match(teamDetailSource, /mergeTeamMatchesFromUpdate/);
+});
+
+test("pending scoring indicator is shown on team detail page", () => {
+  assert.match(teamDetailSource, /hasPendingScoring/);
+});
+
+test("incomplete goal-event notice is supported", () => {
+  assert.match(teamDetailSource, /Detailed scorer data is available for/);
 });

@@ -56,14 +56,10 @@ test("unknown team slug shows not-found state", () => {
 });
 
 test("team detail analytics layout uses responsive two-column grid", () => {
-  assert.match(
-    teamDetailSource,
-    /grid-cols-\[minmax\(0,1\.2fr\)_minmax\(0,0\.8fr\)\]/,
-  );
+  assert.match(teamDetailSource, /min-\[1024px\]:grid-cols-2/);
 });
 
 test("pending scoring indicator is shown on team detail page", () => {
-  assert.match(teamDetailSource, /Result calculation pending/);
   assert.match(teamDetailSource, /hasPendingScoring/);
 });
 
