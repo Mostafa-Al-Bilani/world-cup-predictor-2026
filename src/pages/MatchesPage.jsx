@@ -9,9 +9,12 @@ import { useAuth } from "../context/AuthContext";
 import { MATCHES_UPDATED_EVENT } from "../hooks/useLiveMatchNotifications";
 import { matchService } from "../services/matchService";
 import { predictionService } from "../services/predictionService";
-import { formatDate } from "../utils/date";
 import { getSafeErrorMessage } from "../utils/errors";
 import { isMatchOpenForPrediction } from "../utils/matches";
+import {
+  groupMatchesByDate,
+  sortMatchesForStatus,
+} from "../utils/matchScheduleOrdering";
 
 const statusFilterOptions = [
   { value: "upcoming", label: "Upcoming" },
@@ -36,25 +39,6 @@ const normalizeStatus = (status) =>
     .trim()
     .toLowerCase()
     .replace(/[\s-]+/g, "_");
-
-const groupMatchesByDate = (matches) => {
-  const grouped = new Map();
-
-  matches.forEach((match) => {
-    const key = formatDate(match.match_date);
-
-    if (!grouped.has(key)) {
-      grouped.set(key, []);
-    }
-
-    grouped.get(key).push(match);
-  });
-
-  return Array.from(grouped.entries()).map(([dateLabel, dateMatches]) => ({
-    dateLabel,
-    matches: dateMatches,
-  }));
-};
 
 export function MatchesPage() {
   const navigate = useNavigate();
@@ -142,8 +126,8 @@ export function MatchesPage() {
   const filteredMatches = useMemo(() => {
     const query = filters.search.trim().toLowerCase();
 
-    return matches
-      .filter((match) => {
+    return sortMatchesForStatus(
+      matches.filter((match) => {
         const searchableText =
           `${match.team_a} ${match.team_b} ${match.venue} ${match.city}`.toLowerCase();
 
@@ -166,8 +150,9 @@ export function MatchesPage() {
         return (
           matchesSearch && matchesStage && matchesStatus && matchesPrediction
         );
-      })
-      .sort((a, b) => new Date(a.match_date) - new Date(b.match_date));
+      }),
+      filters.status,
+    );
   }, [filters, matches, predictionByMatch]);
 
   const groupedMatches = useMemo(
