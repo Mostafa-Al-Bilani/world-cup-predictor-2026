@@ -186,7 +186,7 @@ export const getRoundOf32DeadlineBeirutMessage = (
     hour12: true,
   }).format(closingInstant);
 
-  return `Round of 32 selections close ${datePart} at ${timePart} (Beirut time).`;
+  return `Round of 32 selections close ${datePart} at ${timePart} Beirut time.`;
 };
 
 export const getStageWindowMessage = ({

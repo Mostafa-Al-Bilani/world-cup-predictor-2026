@@ -20,10 +20,18 @@ test("Round of 32 submission is allowed one second before the deadline", () => {
     isStageLocked(ROUND_OF_32_LOCK_AT, DEADLINE_MS - 1_000),
     false,
   );
+  assert.equal(
+    isStageLocked(ROUND_OF_32_LOCK_AT, Date.parse("2026-06-26T20:59:59.000Z")),
+    false,
+  );
 });
 
 test("Round of 32 submission is rejected exactly at the deadline", () => {
   assert.equal(isStageLocked(ROUND_OF_32_LOCK_AT, DEADLINE_MS), true);
+  assert.equal(
+    isStageLocked(ROUND_OF_32_LOCK_AT, Date.parse("2026-06-26T21:00:00.000Z")),
+    true,
+  );
 });
 
 test("Round of 32 submission is rejected after the deadline", () => {
@@ -51,17 +59,39 @@ test("displays the Beirut deadline correctly", () => {
   const message = getRoundOf32DeadlineBeirutMessage();
 
   assert.match(message, /Round of 32 selections close/i);
-  assert.match(message, /June 25/i);
+  assert.match(message, /Friday, June 26/i);
   assert.match(message, /11:59 PM/i);
   assert.match(message, /Beirut time/i);
-  assert.doesNotMatch(message, /2026-06-25T21:00:00Z/);
+  assert.doesNotMatch(message, /2026-06-26T21:00:00Z/);
 });
 
 test("stores and compares the Round of 32 deadline in UTC", () => {
-  assert.equal(ROUND_OF_32_LOCK_AT, "2026-06-25T21:00:00.000Z");
+  assert.equal(ROUND_OF_32_LOCK_AT, "2026-06-26T21:00:00.000Z");
   assert.equal(
     getStageLockAt([], "round_of_32", []),
     ROUND_OF_32_LOCK_AT,
+  );
+});
+
+test("demo-mode fallback uses the shared Round of 32 UTC deadline", () => {
+  const serviceSource = readFileSync(
+    join(dirname(fileURLToPath(import.meta.url)), "../src/services/stagePredictionService.js"),
+    "utf8",
+  );
+
+  assert.match(serviceSource, /lock_at: ROUND_OF_32_LOCK_AT/);
+  assert.doesNotMatch(serviceSource, /2026-06-25T21:00:00/);
+  assert.doesNotMatch(serviceSource, /2026-06-26 00:00:00\+03/);
+});
+
+test("refresh_stage_prediction_windows keeps the extended Round of 32 deadline", () => {
+  const schema = readSchemaSnippet();
+
+  assert.match(schema, /refresh_stage_prediction_windows/);
+  assert.match(schema, /'round_of_32'[\s\S]*'2026-06-27 00:00:00\+03'/);
+  assert.doesNotMatch(
+    schema,
+    /values \(\s*'round_of_32'[\s\S]*'2026-06-26 00:00:00\+03'/,
   );
 });
 
