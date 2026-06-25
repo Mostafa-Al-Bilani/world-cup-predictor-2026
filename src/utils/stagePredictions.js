@@ -41,7 +41,7 @@ export const STAGE_PREDICTION_CONFIGS = STAGE_CONFIGS;
 
 const STAGE_BY_KEY = new Map(STAGE_CONFIGS.map((stage) => [stage.key, stage]));
 
-export const ROUND_OF_32_LOCK_AT = "2026-06-25T21:00:00.000Z";
+export const ROUND_OF_32_LOCK_AT = "2026-06-26T21:00:00.000Z";
 
 const PLACEHOLDER_TEAM_PATTERN =
   /^(?:tbd|to be determined|[123][a-l](?:\/[a-l])*|[a-l][123]?|w\d+|l\d+|group\s+[a-l]\s+(?:1st|2nd|3rd)\s+place|round\s+of\s+\d+\s+\d+\s+winner|round\s+of\s+\d+\s+\d+\s+loser|quarterfinal\s+\d+\s+winner|quarterfinal\s+\d+\s+loser|semifinal\s+\d+\s+winner|semifinal\s+\d+\s+loser)$/i;
